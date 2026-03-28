@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# environment variables
+.env
+.env.local
+.env.*.local
+
+# debug
+npm-debug.log*
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+
+# reports (may contain personal medical data)
+reports/
+
+# IDE
+.vscode/
+.idea/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
