@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Profile, lab records, medications — readable/writable only by the signed-in owner.
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /{subcollection}/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // sharedLinks: closed to clients. getSharedLinkByToken() currently lists the whole
+    // collection, which would expose every token. Serve shared views from a server
+    // route (Admin SDK) or key docs by token and allow `get` only, before opening this.
+    match /sharedLinks/{linkId} {
+      allow read, write: if false;
+    }
+  }
+}

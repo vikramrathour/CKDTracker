@@ -28,3 +28,7 @@ reports/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# personal patient data (real lab history, prescriptions, doctor)
+lib/personal/local.ts
+kidney-health-tracker.jsx
