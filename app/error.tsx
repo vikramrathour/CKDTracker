@@ -11,11 +11,13 @@ export default function GlobalError({
   reset: () => void
 }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="text-center max-w-sm">
-        <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">Something went wrong</h2>
-        <p className="text-sm text-gray-500 mb-6">{error.message}</p>
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-6">
+      <div className="max-w-sm text-center">
+        <AlertTriangle className="mx-auto mb-5 h-10 w-10 text-terra" strokeWidth={1.6} />
+        <h2 className="mb-2 font-serif text-[1.75rem] font-normal leading-tight tracking-[-.02em] text-ink">
+          Something went <em className="italic text-terra-dk">wrong</em>
+        </h2>
+        <p className="mb-7 text-sm text-ink-2">{error.message}</p>
         <Button onClick={reset}>Try again</Button>
       </div>
     </div>

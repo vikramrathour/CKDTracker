@@ -7,14 +7,16 @@ import { useAuth } from '@/components/providers/auth-provider'
 import { useProfile } from '@/lib/hooks/use-profile'
 import { getMedications } from '@/lib/firebase/firestore'
 import type { Medication } from '@/lib/types/medication'
+import { cn } from '@/lib/utils'
 
+// Category rule colour, drawn from the site palette.
 const CATEGORY_COLORS: Record<string, string> = {
-  Immunosuppressant: '#2d6a4f',
-  Corticosteroid: '#2d6a4f',
-  Antihypertensive: '#2563eb',
-  'SGLT2 Inhibitor': '#2d6a4f',
-  Cholesterol: '#7c3aed',
-  Other: '#6b7280',
+  Immunosuppressant: 'bg-sage',
+  Corticosteroid: 'bg-sage',
+  Antihypertensive: 'bg-ink',
+  'SGLT2 Inhibitor': 'bg-sage',
+  Cholesterol: 'bg-terra',
+  Other: 'bg-ink-3',
 }
 
 export default function MedicationsPage() {
@@ -62,36 +64,39 @@ export default function MedicationsPage() {
         {loading ? (
           <CardSkeleton />
         ) : (
-          <div className="bg-white rounded-xl p-4 border border-gray-100">
-            <div className="text-[11px] uppercase tracking-wider text-gray-400 mb-4">
+          <section className="rounded-card border border-hair bg-vellum px-4 pb-2 pt-4">
+            <h2 className="label mb-2 text-ink-3">
               Current Medications
               {doctorName ? ` — ${doctorName}` : ''}
               {doctorHospital ? `, ${doctorHospital}` : ''}
-            </div>
+            </h2>
 
             {error ? (
-              <div className="text-sm text-red-500 py-6 text-center">{error}</div>
+              <p role="alert" className="py-6 text-center text-sm text-critical">{error}</p>
             ) : medications.length === 0 ? (
-              <div className="text-sm text-gray-500 py-6 text-center">No medications added yet</div>
+              <p className="py-6 text-center text-sm text-ink-2">No medications added yet</p>
             ) : (
-              medications.map((med, i) => (
-                <div
-                  key={med.id}
-                  className="flex items-center gap-3 py-3"
-                  style={{ borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}
-                >
-                  <div
-                    className="w-1 h-8 rounded-sm flex-shrink-0"
-                    style={{ backgroundColor: CATEGORY_COLORS[med.category] || '#6b7280' }}
-                  />
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold text-gray-900">{med.name} {med.dose}</div>
-                    <div className="text-xs text-gray-500">{med.category} — {med.frequency}</div>
-                  </div>
-                </div>
-              ))
+              <ul>
+                {medications.map((med) => (
+                  <li
+                    key={med.id}
+                    className="flex items-center gap-3 border-t border-hair py-3.5 first:border-t-0"
+                  >
+                    <span
+                      aria-hidden
+                      className={cn('h-9 w-[3px] flex-shrink-0 rounded-full', CATEGORY_COLORS[med.category] || 'bg-ink-3')}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-serif text-lg font-medium leading-snug tracking-[-.01em] text-ink">
+                        {med.name} <span className="font-sans text-sm font-semibold text-ink-2 tabular">{med.dose}</span>
+                      </div>
+                      <div className="text-[13px] text-ink-3">{med.category} — {med.frequency}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
-          </div>
+          </section>
         )}
       </main>
     </>

@@ -31,18 +31,21 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       ref={dialogRef}
       onClose={onClose}
       className={cn(
-        'rounded-xl shadow-xl border-0 p-0 max-w-md w-full backdrop:bg-black/50',
+        'w-[calc(100%-2rem)] max-w-md rounded-card border border-hair bg-vellum p-0 text-ink shadow-lift',
+        'backdrop:bg-[rgba(12,18,26,.45)] backdrop:backdrop-blur-[2px]',
         className
       )}
     >
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+      <div className="p-5">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 className="font-serif text-xl font-medium tracking-[-.015em]">{title}</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"
+            aria-label="Close"
+            className="-mr-2 flex h-11 w-11 items-center justify-center rounded-btn text-ink-3 transition-colors hover:bg-wash hover:text-ink"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
         {children}

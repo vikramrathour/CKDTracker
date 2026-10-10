@@ -18,15 +18,15 @@ interface ToastProps {
 }
 
 const icons: Record<ToastType, React.ReactNode> = {
-  success: <CheckCircle className="w-5 h-5 text-emerald-500" />,
-  error: <XCircle className="w-5 h-5 text-red-500" />,
-  info: <Info className="w-5 h-5 text-blue-500" />,
+  success: <CheckCircle className="h-5 w-5 text-sage" aria-hidden />,
+  error: <XCircle className="h-5 w-5 text-critical" aria-hidden />,
+  info: <Info className="h-5 w-5 text-terra-dk" aria-hidden />,
 }
 
-const bgColors: Record<ToastType, string> = {
-  success: 'bg-emerald-50 border-emerald-200',
-  error: 'bg-red-50 border-red-200',
-  info: 'bg-blue-50 border-blue-200',
+const edge: Record<ToastType, string> = {
+  success: 'border-l-sage',
+  error: 'border-l-critical',
+  info: 'border-l-terra',
 }
 
 export function Toast({ toast, onDismiss }: ToastProps) {
@@ -37,15 +37,21 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 
   return (
     <div
+      role={toast.type === 'error' ? 'alert' : 'status'}
       className={cn(
-        'flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-slide-in',
-        bgColors[toast.type]
+        'flex items-center gap-3 rounded-card border border-l-2 border-hair bg-vellum px-4 py-3 shadow-lift animate-slide-in',
+        edge[toast.type]
       )}
     >
       {icons[toast.type]}
-      <p className="text-sm text-gray-800 flex-1">{toast.message}</p>
-      <button onClick={() => onDismiss(toast.id)} className="text-gray-400 hover:text-gray-600">
-        <X className="w-4 h-4" />
+      <p className="flex-1 text-sm text-ink">{toast.message}</p>
+      <button
+        type="button"
+        onClick={() => onDismiss(toast.id)}
+        aria-label="Dismiss"
+        className="-mr-2 flex h-9 w-9 items-center justify-center rounded-btn text-ink-3 hover:bg-wash hover:text-ink"
+      >
+        <X className="h-4 w-4" />
       </button>
     </div>
   )

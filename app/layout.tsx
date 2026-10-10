@@ -1,14 +1,30 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Newsreader, Plus_Jakarta_Sans } from 'next/font/google'
 import { AuthProvider } from '@/components/providers/auth-provider'
 import { ToastProvider } from '@/components/providers/toast-provider'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const serif = Newsreader({
+  subsets: ['latin'],
+  style: ['normal', 'italic'],
+  axes: ['opsz'],
+  variable: '--font-serif',
+  display: 'swap',
+})
+
+const sans = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'CKD Tracker',
   description: 'Kidney health tracking and analytics for transplant patients',
+  icons: {
+    icon: '/favicon.png',
+    apple: '/icons/apple-touch-icon.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -20,11 +36,17 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#2563eb',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#F7F6F2' },
+    { media: '(prefers-color-scheme: dark)', color: '#121A24' },
+  ],
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
 }
+
+// Applies the `dark` class from the system preference before first paint.
+const themeScript = `(function(){try{var m=window.matchMedia('(prefers-color-scheme: dark)');var a=function(){document.documentElement.classList.toggle('dark',m.matches)};a();if(m.addEventListener){m.addEventListener('change',a)}else if(m.addListener){m.addListener(a)}}catch(e){}})()`
 
 export default function RootLayout({
   children,
@@ -32,11 +54,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${serif.variable} ${sans.variable}`} suppressHydrationWarning>
       <head>
-        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className={inter.className}>
+      <body>
         <AuthProvider>
           <ToastProvider>
             {children}

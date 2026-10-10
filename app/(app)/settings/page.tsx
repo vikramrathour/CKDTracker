@@ -10,12 +10,12 @@ export default function SettingsPage() {
   return (
     <>
       <Header title="Settings" showBack />
-      <main className="px-4 py-4 space-y-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">Account</h3>
-          <p className="text-sm text-gray-500">{user?.email}</p>
-          <p className="text-sm text-gray-500">{user?.displayName}</p>
-        </div>
+      <main className="space-y-6 px-4 py-5">
+        <section className="rounded-card border border-hair bg-vellum p-5">
+          <h3 className="label mb-3 text-ink-3">Account</h3>
+          <p className="font-serif text-xl font-medium tracking-[-.015em] text-ink">{user?.displayName}</p>
+          <p className="mt-0.5 text-sm text-ink-2">{user?.email}</p>
+        </section>
 
         <Button variant="danger" className="w-full" onClick={logOut}>
           Sign Out

@@ -2,11 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────
+   Design tokens. Mirrors the owner's website ("Executive Editorial").
+   Colours are RGB triplets so Tailwind can apply alpha:
+   bg-ink/10  →  rgb(var(--ink) / .1)
+   ───────────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    --health-good: #10b981;
-    --health-warning: #f59e0b;
-    --health-danger: #ef4444;
+    color-scheme: light;
+    /* surfaces */
+    --canvas: 247 246 242;      /* #F7F6F2 page */
+    --vellum: 255 255 255;      /* #FFFFFF cards */
+    --recess: 237 235 228;      /* #EDEBE4 sunken, chips */
+    --wash: 240 239 234;        /* #F0EFEA secondary hover */
+    /* inks */
+    --ink: 18 26 36;            /* #121A24 */
+    --ink-hover: 31 43 58;      /* #1F2B3A */
+    --ink-2: 78 88 102;         /* #4E5866 */
+    --ink-3: 101 109 122;       /* #656D7A */
+    /* accents */
+    --terra: 194 99 62;         /* #C2633E large text + decoration */
+    --terra-dk: 154 69 34;      /* #9A4522 small text on light (AA) */
+    --terra-pale: 251 233 224;  /* #FBE9E0 */
+    --terra-lt: 232 161 132;    /* #E8A184 accent on dark */
+    --sage: 43 92 87;           /* #2B5C57 */
+    --sage-pale: 225 238 236;   /* #E1EEEC */
+    /* medical "critical": used sparingly */
+    --critical: 155 44 44;      /* #9B2C2C */
+    --critical-pale: 247 228 226;
+    /* lines + depth */
+    --hair: rgba(18, 26, 36, .08);
+    --hair-2: rgba(18, 26, 36, .15);
+    --hair-hot: rgba(194, 99, 62, .35);
+    --shadow-soft: 0 16px 36px -8px rgba(18, 26, 36, .06), 0 4px 12px -2px rgba(18, 26, 36, .03);
+    --shadow-lift: 0 22px 44px -10px rgba(18, 26, 36, .12), 0 6px 14px -4px rgba(18, 26, 36, .05);
+    --glass: rgba(247, 246, 242, .88);
+    --ease: cubic-bezier(.16, 1, .3, 1);
+  }
+
+  /* Derived dark theme (the website has none). Applied by the inline
+     script in app/layout.tsx from prefers-color-scheme. */
+  .dark {
+    color-scheme: dark;
+    --canvas: 18 26 36;         /* #121A24 */
+    --vellum: 27 37 51;         /* #1B2533 surface */
+    --recess: 12 18 26;         /* #0C121A */
+    --wash: 34 45 60;           /* #222D3C */
+    --ink: 247 246 242;         /* #F7F6F2 text */
+    --ink-hover: 255 255 255;
+    --ink-2: 188 189 188;       /* ~74% text */
+    --ink-3: 151 154 155;       /* ~58% text */
+    --terra: 217 128 92;        /* #D9805C */
+    --terra-dk: 232 161 132;    /* terra-lt for small text on dark */
+    --terra-pale: 58 40 36;     /* #3A2824 */
+    --terra-lt: 232 161 132;
+    --sage: 158 208 201;        /* #9ED0C9 sage-lt */
+    --sage-pale: 28 54 52;      /* #1C3634 */
+    --critical: 240 154 146;
+    --critical-pale: 62 32 35;
+    --hair: rgba(247, 246, 242, .14);
+    --hair-2: rgba(247, 246, 242, .22);
+    --hair-hot: rgba(232, 161, 132, .45);
+    --shadow-soft: 0 16px 36px -8px rgba(0, 0, 0, .35), 0 4px 12px -2px rgba(0, 0, 0, .2);
+    --shadow-lift: 0 22px 44px -10px rgba(0, 0, 0, .5), 0 6px 14px -4px rgba(0, 0, 0, .25);
+    --glass: rgba(18, 26, 36, .86);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    font-size: 16px;
+    line-height: 1.6;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3 {
+    @apply font-serif;
+    letter-spacing: -.015em;
+  }
+
+  ::selection {
+    background: rgb(var(--terra-pale));
+    color: rgb(var(--ink));
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--terra));
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* Native date picker icon follows the theme */
+  .dark input[type='date']::-webkit-calendar-picker-indicator {
+    filter: invert(1) opacity(.7);
   }
 
   /* Safe area padding for PWA */
@@ -15,7 +108,91 @@
   }
 }
 
+@layer components {
+  /* Small uppercase UI label */
+  .label {
+    font-family: var(--font-sans);
+    font-size: .6875rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    line-height: 1.3;
+  }
+
+  /* Section eyebrow in terra */
+  .eyebrow {
+    font-size: .6875rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    line-height: 1.3;
+    color: rgb(var(--terra-dk));
+  }
+
+  /* Big serif numbers */
+  .num {
+    font-family: var(--font-serif);
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -.02em;
+  }
+
+  /* Text link: terra underline grows on hover */
+  .tlink {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    font-weight: 600;
+    color: rgb(var(--ink));
+    background: linear-gradient(rgb(var(--terra)), rgb(var(--terra))) 0 100% / 0 1.5px no-repeat;
+    padding-bottom: 2px;
+    transition: background-size .35s var(--ease), color .2s;
+  }
+  .tlink:hover {
+    background-size: 100% 1.5px;
+    color: rgb(var(--terra-dk));
+  }
+
+  /* Sticky translucent bar (header) */
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    backdrop-filter: saturate(1.4) blur(14px);
+  }
+
+  /* Pulsing terra dot for live / alert indicators */
+  .pulse-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: rgb(var(--terra));
+    flex-shrink: 0;
+    animation: dot-pulse 2.6s ease-in-out infinite;
+  }
+
+  /* Form fields */
+  .field {
+    @apply w-full rounded-btn border border-hair-2 bg-vellum px-3 py-2.5 text-sm text-ink;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .field::placeholder {
+    color: rgb(var(--ink-3) / .7);
+  }
+  .field:hover {
+    border-color: var(--hair-hot);
+  }
+  .field:focus {
+    outline: none;
+    border-color: rgb(var(--terra));
+    box-shadow: 0 0 0 3px rgb(var(--terra) / .15);
+  }
+}
+
 @layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
   /* Hide scrollbar for horizontal scroll areas */
   .scrollbar-hide {
     -ms-overflow-style: none;
@@ -26,34 +203,16 @@
   }
 }
 
-@layer components {
-  /* Animated health score ring */
-  @keyframes ring-fill {
-    from {
-      stroke-dashoffset: var(--ring-circumference);
-    }
-    to {
-      stroke-dashoffset: var(--ring-offset);
-    }
-  }
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgb(var(--terra) / .18); }
+  50% { box-shadow: 0 0 0 6px rgb(var(--terra) / 0); }
+}
 
-  .health-ring-animated {
-    animation: ring-fill 1s ease-out forwards;
-  }
-
-  /* Toast slide-in animation */
-  @keyframes slide-in {
-    from {
-      transform: translateY(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0);
-      opacity: 1;
-    }
-  }
-
-  .animate-slide-in {
-    animation: slide-in 0.3s ease-out;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
   }
 }

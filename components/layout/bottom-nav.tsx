@@ -17,8 +17,11 @@ export function BottomNav() {
   const router = useRouter()
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 pb-safe">
-      <div className="flex items-center justify-around max-w-lg mx-auto h-16">
+    <nav
+      aria-label="Primary"
+      className="glass fixed bottom-0 left-0 right-0 z-40 border-t border-hair pb-safe"
+    >
+      <div className="mx-auto flex h-16 max-w-lg items-stretch justify-around px-2">
         {navItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname.startsWith(item.href)
@@ -26,14 +29,25 @@ export function BottomNav() {
           return (
             <button
               key={item.href}
+              type="button"
               onClick={() => router.push(item.href)}
+              aria-current={isActive ? 'page' : undefined}
               className={cn(
-                'flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors min-w-[60px]',
-                isActive ? 'text-primary-600' : 'text-gray-400 hover:text-gray-600'
+                'relative flex min-w-[56px] flex-1 flex-col items-center justify-center gap-1 transition-colors duration-200',
+                isActive ? 'text-ink' : 'text-ink-3 hover:text-ink-2'
               )}
             >
-              <Icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium">{item.label}</span>
+              <Icon className="h-5 w-5" strokeWidth={isActive ? 2.1 : 1.7} />
+              <span className={cn('text-[11px] leading-none', isActive ? 'font-semibold' : 'font-medium')}>
+                {item.label}
+              </span>
+              <span
+                aria-hidden
+                className={cn(
+                  'absolute bottom-1.5 h-1 w-1 rounded-full bg-terra transition-opacity duration-300',
+                  isActive ? 'opacity-100' : 'opacity-0'
+                )}
+              />
             </button>
           )
         })}

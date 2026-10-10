@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Header } from '@/components/layout/header'
+import { Header, primaryIconButton } from '@/components/layout/header'
 import { useLabRecords } from '@/lib/hooks/use-lab-records'
 import { useAuth } from '@/components/providers/auth-provider'
 import { deleteLabRecord } from '@/lib/firebase/firestore'
@@ -31,7 +31,7 @@ export default function RecordsPage() {
   if (loading) {
     return (
       <>
-        <Header title="Test History" />
+        <Header title="Test History" emphasis="History" />
         <main className="px-4 py-4"><ListSkeleton rows={5} /></main>
       </>
     )
@@ -41,22 +41,25 @@ export default function RecordsPage() {
     <>
       <Header
         title="Test History"
+        emphasis="History"
         actions={
           <button
+            type="button"
             onClick={() => router.push('/records/new')}
-            className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-sm"
+            aria-label="Add record"
+            className={primaryIconButton}
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
           </button>
         }
       />
       <main className="px-4 py-4">
         {records.length === 0 ? (
-          <div className="text-center pt-20">
-            <div className="text-sm text-gray-500">No records yet. Add your first lab report.</div>
+          <div className="pt-20 text-center">
+            <p className="text-[15px] text-ink-2">No records yet. Add your first lab report.</p>
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <ul className="border-t border-hair-2">
             {[...records].reverse().map((record) => {
               const abnormals = record.values.filter((v) => v.isAbnormal)
               const cr = record.values.find((v) => v.testName === 'Creatinine')
@@ -64,51 +67,60 @@ export default function RecordsPage() {
               const tac = record.values.find((v) => v.testName === 'Tacrolimus')
               const k = record.values.find((v) => v.testName === 'Potassium')
               const hb = record.values.find((v) => v.testName === 'Hemoglobin')
+              const keyValues = [
+                cr && { l: 'Cr', v: cr.value },
+                egfr && { l: 'eGFR', v: egfr.value },
+                tac && { l: 'Tac', v: tac.value },
+                k && { l: 'K⁺', v: k.value },
+                hb && { l: 'Hb', v: hb.value },
+              ].filter(Boolean) as { l: string; v: number }[]
 
               return (
-                <div
-                  key={record.id}
-                  className="bg-white rounded-xl p-4 border border-gray-100"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="text-[15px] font-semibold text-gray-900">
+                <li key={record.id} className="border-b border-hair-2 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                      <h3 className="font-serif text-[1.375rem] font-normal leading-tight tracking-[-.015em] text-ink tabular">
                         {formatDate(record.recordDate, 'dd MMM yy')}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-0.5">
+                      </h3>
+                      <span className="truncate text-right text-[13px] text-ink-3">
                         {record.labName || '—'} · {record.values.length} tests
-                      </div>
+                      </span>
                     </div>
                     <button
+                      type="button"
                       onClick={() => handleDelete(record.id)}
                       disabled={deleting === record.id}
-                      className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-md px-2.5 py-1 hover:bg-red-100"
+                      aria-label="Delete record"
+                      className="-mr-2 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-btn text-lg leading-none text-ink-3 transition-colors hover:bg-critical-pale hover:text-critical disabled:opacity-50"
                     >
                       {deleting === record.id ? '...' : '×'}
                     </button>
                   </div>
 
                   {abnormals.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
+                    <div className="mt-2.5 flex flex-wrap gap-1.5">
                       {abnormals.slice(0, 5).map((v) => (
-                        <Badge key={v.testName} variant="danger">
+                        <Badge key={v.testName} variant="danger" uppercase={false}>
                           {v.testName}: {v.value}
                         </Badge>
                       ))}
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-3 mt-2">
-                    {cr && <span className="text-xs text-gray-500">Cr: <strong>{cr.value}</strong></span>}
-                    {egfr && <span className="text-xs text-gray-500">eGFR: <strong>{egfr.value}</strong></span>}
-                    {tac && <span className="text-xs text-gray-500">Tac: <strong>{tac.value}</strong></span>}
-                    {k && <span className="text-xs text-gray-500">K⁺: <strong>{k.value}</strong></span>}
-                    {hb && <span className="text-xs text-gray-500">Hb: <strong>{hb.value}</strong></span>}
-                  </div>
-                </div>
+                  {keyValues.length > 0 && (
+                    <dl className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
+                      {keyValues.map((kv) => (
+                        <div key={kv.l} className="flex items-baseline gap-1">
+                          <dt className="text-xs text-ink-3">{kv.l}</dt>
+                          <dd className="text-[13px] font-semibold text-ink tabular">{kv.v}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </li>
               )
             })}
-          </div>
+          </ul>
         )}
       </main>
     </>

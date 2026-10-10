@@ -1,41 +1,76 @@
 'use client'
 
-import { ArrowLeft, Settings, LogOut } from 'lucide-react'
+import Image from 'next/image'
+import { ArrowLeft, Settings } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/components/providers/auth-provider'
 
 interface HeaderProps {
   title: string
+  /** A word inside `title` to set in italic terra, the site's signature move. */
+  emphasis?: string
   subtitle?: string
   showBack?: boolean
   actions?: React.ReactNode
 }
 
-export function Header({ title, subtitle, showBack, actions }: HeaderProps) {
+function renderTitle(title: string, emphasis?: string) {
+  if (!emphasis) return title
+  const i = title.indexOf(emphasis)
+  if (i === -1) return title
+  return (
+    <>
+      {title.slice(0, i)}
+      <em className="italic text-terra-dk">{emphasis}</em>
+      {title.slice(i + emphasis.length)}
+    </>
+  )
+}
+
+export const iconButton =
+  'flex h-11 w-11 items-center justify-center rounded-btn text-ink-2 transition-colors duration-200 hover:bg-wash hover:text-ink'
+
+/** Primary action in the header (e.g. upload, add): ink square. */
+export const primaryIconButton =
+  'flex h-11 w-11 items-center justify-center rounded-btn bg-ink text-canvas transition-[background-color,transform] duration-200 ease-editorial hover:bg-ink-hover hover:-translate-y-px'
+
+export function Header({ title, emphasis, subtitle, showBack, actions }: HeaderProps) {
   const router = useRouter()
-  const { logOut } = useAuth()
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-gray-100">
-      <div className="flex items-center justify-between px-4 h-14 max-w-lg mx-auto">
-        <div className="flex items-center gap-3">
-          {showBack && (
-            <button onClick={() => router.back()} className="p-1 -ml-1 text-gray-500">
-              <ArrowLeft className="w-5 h-5" />
+    <header className="glass sticky top-0 z-40 border-b border-hair pt-[env(safe-area-inset-top)]">
+      <div className="mx-auto flex h-16 max-w-lg items-center justify-between gap-3 px-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {showBack ? (
+            <button
+              type="button"
+              onClick={() => router.back()}
+              aria-label="Back"
+              className={`${iconButton} -ml-3`}
+            >
+              <ArrowLeft className="h-5 w-5" />
             </button>
+          ) : (
+            <span className="relative block h-6 w-[31px] flex-shrink-0" aria-hidden>
+              <Image src="/icons/logo-mark.png" alt="" width={31} height={24} className="dark:hidden" priority />
+              <Image src="/icons/logo-mark-light.png" alt="" width={31} height={24} className="hidden dark:block" priority />
+            </span>
           )}
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">{title}</h1>
-            {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+          <div className="min-w-0">
+            <h1 className="truncate font-serif text-[22px] font-medium leading-tight tracking-[-.02em] text-ink">
+              {renderTitle(title, emphasis)}
+            </h1>
+            {subtitle && <p className="truncate text-xs leading-tight text-ink-3">{subtitle}</p>}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-shrink-0 items-center gap-1">
           {actions}
           <button
+            type="button"
             onClick={() => router.push('/settings')}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-50"
+            aria-label="Settings"
+            className={`${iconButton} -mr-2`}
           >
-            <Settings className="w-5 h-5" />
+            <Settings className="h-5 w-5" />
           </button>
         </div>
       </div>

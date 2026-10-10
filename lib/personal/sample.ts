@@ -11,7 +11,7 @@ export const PERSONAL_DATA: PersonalData = {
       labName: 'Sample Lab',
       values: [
         { testName: 'Creatinine', panel: 'kidney', value: 1.2, unit: 'mg/dL', referenceMin: 0.7, referenceMax: 1.3, isAbnormal: false },
-        { testName: 'eGFR', panel: 'kidney', value: 68, unit: 'mL/min/1.73m²', referenceMin: 90, referenceMax: 120, isAbnormal: true },
+        { testName: 'eGFR', panel: 'kidney', value: 68, unit: 'mL/min/1.73m²', referenceMin: 60, referenceMax: 120, isAbnormal: false },
         { testName: 'Tacrolimus', panel: 'tacrolimus', value: 6.5, unit: 'ng/mL', referenceMin: 5, referenceMax: 10, isAbnormal: false },
         { testName: 'Potassium', panel: 'electrolytes', value: 4.6, unit: 'mEq/L', referenceMin: 3.5, referenceMax: 5.1, isAbnormal: false },
         { testName: 'Sodium', panel: 'electrolytes', value: 139, unit: 'mEq/L', referenceMin: 136, referenceMax: 146, isAbnormal: false },
@@ -23,7 +23,7 @@ export const PERSONAL_DATA: PersonalData = {
       labName: 'Sample Lab',
       values: [
         { testName: 'Creatinine', panel: 'kidney', value: 1.35, unit: 'mg/dL', referenceMin: 0.7, referenceMax: 1.3, isAbnormal: true },
-        { testName: 'eGFR', panel: 'kidney', value: 62, unit: 'mL/min/1.73m²', referenceMin: 90, referenceMax: 120, isAbnormal: true },
+        { testName: 'eGFR', panel: 'kidney', value: 62, unit: 'mL/min/1.73m²', referenceMin: 60, referenceMax: 120, isAbnormal: false },
         { testName: 'Tacrolimus', panel: 'tacrolimus', value: 8.1, unit: 'ng/mL', referenceMin: 5, referenceMax: 10, isAbnormal: false },
         { testName: 'Potassium', panel: 'electrolytes', value: 5.3, unit: 'mEq/L', referenceMin: 3.5, referenceMax: 5.1, isAbnormal: true },
         { testName: 'Sodium', panel: 'electrolytes', value: 141, unit: 'mEq/L', referenceMin: 136, referenceMax: 146, isAbnormal: false },
@@ -35,7 +35,7 @@ export const PERSONAL_DATA: PersonalData = {
       labName: 'Sample Lab',
       values: [
         { testName: 'Creatinine', panel: 'kidney', value: 1.15, unit: 'mg/dL', referenceMin: 0.7, referenceMax: 1.3, isAbnormal: false },
-        { testName: 'eGFR', panel: 'kidney', value: 71, unit: 'mL/min/1.73m²', referenceMin: 90, referenceMax: 120, isAbnormal: true },
+        { testName: 'eGFR', panel: 'kidney', value: 71, unit: 'mL/min/1.73m²', referenceMin: 60, referenceMax: 120, isAbnormal: false },
         { testName: 'Tacrolimus', panel: 'tacrolimus', value: 7.2, unit: 'ng/mL', referenceMin: 5, referenceMax: 10, isAbnormal: false },
         { testName: 'Potassium', panel: 'electrolytes', value: 4.8, unit: 'mEq/L', referenceMin: 3.5, referenceMax: 5.1, isAbnormal: false },
         { testName: 'Sodium', panel: 'electrolytes', value: 138, unit: 'mEq/L', referenceMin: 136, referenceMax: 146, isAbnormal: false },

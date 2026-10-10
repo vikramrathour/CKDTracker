@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from 'clsx'
 import { format, parseISO } from 'date-fns'
 import type { LabValue } from '@/lib/types/lab-record'
+import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
 
 /** Tailwind class merger utility */
 export function cn(...inputs: ClassValue[]) {
@@ -52,9 +53,8 @@ export const STATUS_COLORS = {
 
 /** Determine if a delta direction is positive for a specific test */
 export function isDeltaPositive(testName: string, direction: 'up' | 'down'): boolean {
-  // For these tests, higher is better
-  const higherIsBetter = ['eGFR', 'HDL Cholesterol', 'Hemoglobin']
-  if (higherIsBetter.includes(testName)) return direction === 'up'
-  // For most tests, lower is better (or staying in range)
+  // REFERENCE_RANGES is the single source of truth for direction; unknown
+  // tests and most analytes are treated as lower-is-better
+  if (REFERENCE_RANGES[testName]?.higherIsBetter) return direction === 'up'
   return direction === 'down'
 }

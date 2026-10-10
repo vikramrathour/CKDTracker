@@ -54,7 +54,7 @@ export function countTimesAboveRange(allValues: LabValue[][]): Record<string, nu
   const counts: Record<string, number> = {}
   for (const recordValues of allValues) {
     for (const val of recordValues) {
-      if (val.isAbnormal && val.referenceMax && val.value > val.referenceMax) {
+      if (val.isAbnormal && val.referenceMax != null && val.value > val.referenceMax) {
         counts[val.testName] = (counts[val.testName] || 0) + 1
       }
     }

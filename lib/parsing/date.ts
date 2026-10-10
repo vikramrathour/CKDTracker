@@ -72,13 +72,20 @@ export function parseDateString(input: string): string | null {
 }
 
 // Label groups in priority order: the collection date is the clinically
-// relevant one; registration/report dates are fallbacks.
+// relevant one; sample/specimen, registration and report dates are fallbacks.
+// Labels are whole words (with their inflections listed explicitly) so 'Report'
+// never matches the start of 'Reported'. Groups are tried in priority order
+// across the whole text, so 'Sample Collection Date : ...' is read via its
+// Collection label even though 'Sample' comes first on the line.
 const LABEL_GROUPS = [
-  '(?:Collection|Collected|Sample|Specimen)',
+  '(?:Collection|Collected)',
+  '(?:Sample|Specimen)',
   '(?:Registration|Registered)',
-  '(?:Report|Reported)',
+  '(?:Report|Reported|Reporting)',
 ]
-const LABEL_SUFFIX = '\\s*(?:Date|On|At)?(?:\\s*(?:&|and)\\s*Time)?\\s*[:\\-]?\\s*([^\\n]{0,40})'
+// Optional 'Date'/'On'/'At' (+ '& Time') and separator, same line only. The
+// match stops where the date should start, so the scan never consumes past it.
+const LABEL_SUFFIX = '[ \\t]*(?:Date|On|At)?(?:[ \\t]*(?:&|and)[ \\t]*Time)?[ \\t]*[:\\-]?[ \\t]*'
 
 /** All matches of a global regex (tsconfig targets ES5 libs, so no matchAll). */
 function allMatches(re: RegExp, text: string): RegExpExecArray[] {
@@ -93,15 +100,17 @@ function allMatches(re: RegExp, text: string): RegExpExecArray[] {
 
 /**
  * Find the report date in extracted PDF text. Labelled dates (collection,
- * then registration, then report) win; otherwise the first valid month-name
+ * then sample/specimen, then registration, then report) win; otherwise the first valid month-name
  * or ISO date anywhere in the text. Bare numeric dates without a label are
  * ignored (too easily confused with other numbers).
  */
 export function extractReportDate(text: string): string | null {
   for (const label of LABEL_GROUPS) {
-    const re = new RegExp(`\\b${label}${LABEL_SUFFIX}`, 'gi')
+    const re = new RegExp(`\\b${label}\\b${LABEL_SUFFIX}`, 'gi')
     for (const m of allMatches(re, text)) {
-      const iso = parseDateString(m[1])
+      const start = (m.index ?? 0) + m[0].length
+      const end = text.indexOf('\n', start)
+      const iso = parseDateString(text.slice(start, end === -1 ? undefined : end))
       if (iso) return iso
     }
   }

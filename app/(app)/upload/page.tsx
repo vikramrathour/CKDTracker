@@ -9,7 +9,9 @@ import { useLabRecords } from '@/lib/hooks/use-lab-records'
 import { addLabRecord } from '@/lib/firebase/firestore'
 import { apiFetch } from '@/lib/api/client'
 import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
-import { Upload, FileText, Check, AlertCircle, Pencil } from 'lucide-react'
+import { Upload, Check, AlertCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import type { LabValue } from '@/lib/types/lab-record'
 
 type Step = 'upload' | 'parsing' | 'review' | 'saving' | 'done' | 'error'
@@ -125,12 +127,11 @@ export default function UploadPage() {
 
   return (
     <>
-      <Header title="Upload Report" showBack />
-      <main className="px-4 py-4">
+      <Header title="Upload Report" emphasis="Report" showBack />
+      <main className="px-4 py-5">
         {/* Step indicator */}
-        <div className="flex items-center gap-2 mb-6">
+        <ol className="mb-6 flex items-center gap-2">
           {['Upload', 'Review', 'Save'].map((label, i) => {
-            const stepIdx = i === 0 ? 'upload' : i === 1 ? 'review' : 'done'
             const isActive = (step === 'upload' || step === 'parsing') && i === 0
               || (step === 'review') && i === 1
               || (step === 'saving' || step === 'done') && i === 2
@@ -138,43 +139,49 @@ export default function UploadPage() {
               || (i === 1 && (step === 'saving' || step === 'done'))
               || (i === 2 && step === 'done')
             return (
-              <div key={label} className="flex items-center gap-2 flex-1">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  isDone ? 'bg-emerald-600 text-white' :
-                  isActive ? 'bg-blue-600 text-white' :
-                  'bg-gray-200 text-gray-400'
-                }`}>
-                  {isDone ? <Check className="w-3.5 h-3.5" /> : i + 1}
-                </div>
-                <span className={`text-xs ${isActive || isDone ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>
+              <li key={label} className="flex flex-1 items-center gap-2" aria-current={isActive ? 'step' : undefined}>
+                <span className={cn(
+                  'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold tabular',
+                  isDone ? 'bg-sage text-canvas' :
+                  isActive ? 'bg-ink text-canvas' :
+                  'bg-recess text-ink-3'
+                )}>
+                  {isDone ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                </span>
+                <span className={cn('text-[13px]', isActive || isDone ? 'font-semibold text-ink' : 'text-ink-3')}>
                   {label}
                 </span>
-                {i < 2 && <div className="flex-1 h-px bg-gray-200" />}
-              </div>
+                {i < 2 && <span className="h-px flex-1 bg-hair-2" aria-hidden />}
+              </li>
             )
           })}
-        </div>
+        </ol>
 
         {/* Upload step */}
         {(step === 'upload' || step === 'error') && (
           <div>
             <div
               {...getRootProps()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                isDragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-              }`}
+              className={cn(
+                'cursor-pointer rounded-card border-[1.5px] border-dashed px-6 py-10 text-center transition-[border-color,background-color,box-shadow] duration-300 ease-editorial',
+                isDragActive
+                  ? 'border-terra bg-terra-pale shadow-lift'
+                  : 'border-hair-2 bg-vellum hover:border-hair-hot hover:shadow-soft'
+              )}
             >
               <input {...getInputProps()} />
-              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm font-medium text-gray-700">
+              <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-recess text-terra-dk">
+                <Upload className="h-5 w-5" />
+              </span>
+              <p className="font-serif text-lg font-medium leading-snug text-ink">
                 {isDragActive ? 'Drop the PDF here' : 'Tap to select or drag a lab report PDF'}
               </p>
-              <p className="text-xs text-gray-400 mt-1">Supports Metropolis Healthcare and other labs (max 10MB)</p>
+              <p className="mt-1.5 text-xs text-ink-3">Supports Metropolis Healthcare and other labs (max 10MB)</p>
             </div>
             {step === 'error' && (
-              <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-100 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-red-700">{error}</div>
+              <div role="alert" className="mt-4 flex items-start gap-2.5 rounded-card border border-l-2 border-hair border-l-critical bg-critical-pale p-3.5">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-critical" />
+                <div className="text-sm text-critical">{error}</div>
               </div>
             )}
           </div>
@@ -182,123 +189,126 @@ export default function UploadPage() {
 
         {/* Parsing step */}
         {step === 'parsing' && (
-          <div className="text-center py-12">
-            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-gray-600">Extracting values from <strong>{fileName}</strong>...</p>
-            <p className="text-xs text-gray-400 mt-1">Using regex patterns + AI fallback</p>
+          <div className="py-12 text-center" role="status">
+            <div className="mx-auto mb-4 h-7 w-7 animate-spin rounded-full border-2 border-terra border-t-transparent" />
+            <p className="text-sm text-ink-2">Extracting values from <strong className="font-semibold text-ink">{fileName}</strong>...</p>
+            <p className="mt-1 text-xs text-ink-3">Using regex patterns + AI fallback</p>
           </div>
         )}
 
         {/* Review step */}
         {step === 'review' && (
           <div>
-            <div className="flex gap-3 mb-4">
-              <div className="flex-1">
-                <label className="text-[11px] uppercase tracking-wider text-gray-400 block mb-1">Date</label>
+            <div className="mb-5 flex gap-3">
+              <div className="min-w-0 flex-1">
+                <label htmlFor="upload-date" className="label mb-1.5 block text-ink-3">Date</label>
                 <input
+                  id="upload-date"
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg font-mono text-sm bg-white"
+                  className="field tabular"
                 />
               </div>
-              <div className="flex-1">
-                <label className="text-[11px] uppercase tracking-wider text-gray-400 block mb-1">Lab</label>
+              <div className="min-w-0 flex-1">
+                <label htmlFor="upload-lab" className="label mb-1.5 block text-ink-3">Lab</label>
                 <input
+                  id="upload-lab"
                   value={labName}
                   onChange={(e) => setLabName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                  className="field"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-gray-900">
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <h2 className="font-serif text-xl font-medium tracking-[-.015em] text-ink tabular">
                 {values.length} values extracted
-              </span>
-              <span className="text-xs text-gray-400">Tap a value to edit</span>
+              </h2>
+              <span className="text-xs text-ink-3">Tap a value to edit</span>
             </div>
 
-            <div className="space-y-1.5">
-              {values.map((val, idx) => {
-                const ref = REFERENCE_RANGES[val.testName]
-                return (
-                  <div
-                    key={idx}
-                    className={`flex items-center gap-2 p-2.5 rounded-lg border ${
-                      val.isAbnormal ? 'border-red-200 bg-red-50/50' : 'border-gray-100 bg-white'
-                    }`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                      val.isAbnormal ? 'bg-red-500' : 'bg-emerald-500'
-                    }`} />
-                    <span className="text-sm text-gray-900 flex-1">{val.testName}</span>
-                    {editingIdx === idx ? (
-                      <input
-                        type="number"
-                        step="any"
-                        defaultValue={val.value}
-                        autoFocus
-                        onBlur={(e) => updateValue(idx, parseFloat(e.target.value))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') updateValue(idx, parseFloat((e.target as HTMLInputElement).value))
-                        }}
-                        className="w-20 px-2 py-1 border border-blue-300 rounded text-sm font-mono text-right"
-                      />
-                    ) : (
-                      <button
-                        onClick={() => setEditingIdx(idx)}
-                        className={`font-mono text-sm font-semibold ${
-                          val.isAbnormal ? 'text-red-600' : 'text-emerald-600'
-                        }`}
-                      >
-                        {val.value}
-                      </button>
-                    )}
-                    <span className="text-[10px] text-gray-400 w-14 text-right">{val.unit}</span>
+            <ul className="border-t border-hair-2">
+              {values.map((val, idx) => (
+                <li
+                  key={idx}
+                  className={cn(
+                    'flex min-h-[48px] items-center gap-2.5 border-b border-hair-2 py-1.5',
+                    val.isAbnormal && 'bg-terra-pale/50'
+                  )}
+                >
+                  <span className={cn(
+                    'ml-1 h-2 w-2 flex-shrink-0 rounded-full',
+                    val.isAbnormal ? 'bg-terra' : 'bg-sage'
+                  )} />
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{val.testName}</span>
+                  {editingIdx === idx ? (
+                    <input
+                      type="number"
+                      step="any"
+                      defaultValue={val.value}
+                      autoFocus
+                      onBlur={(e) => updateValue(idx, parseFloat(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') updateValue(idx, parseFloat((e.target as HTMLInputElement).value))
+                      }}
+                      className="field w-24 px-2 py-1.5 text-right tabular"
+                    />
+                  ) : (
                     <button
-                      onClick={() => removeValue(idx)}
-                      className="text-gray-300 hover:text-red-400 text-sm px-1"
+                      type="button"
+                      onClick={() => setEditingIdx(idx)}
+                      className={cn(
+                        'num min-h-[40px] rounded-btn px-2 text-[17px] font-medium underline decoration-hair-2 decoration-dotted underline-offset-4 hover:bg-wash',
+                        val.isAbnormal ? 'text-terra-dk' : 'text-ink'
+                      )}
                     >
-                      ×
+                      {val.value}
                     </button>
-                  </div>
-                )
-              })}
-            </div>
+                  )}
+                  <span className="w-14 text-right text-[11px] text-ink-3">{val.unit}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeValue(idx)}
+                    aria-label={`Remove ${val.testName}`}
+                    className="flex h-10 w-9 items-center justify-center rounded-btn text-base text-ink-3 transition-colors hover:bg-critical-pale hover:text-critical"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
 
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => { setStep('upload'); setValues([]); }}
-                className="flex-1 py-3 border border-gray-200 rounded-lg text-sm text-gray-500 bg-white"
+            <div className="mt-6 flex gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => { setStep('upload'); setValues([]) }}
+                className="flex-1"
               >
                 Re-upload
-              </button>
-              <button
-                onClick={handleSave}
-                className="flex-[2] py-3 rounded-lg text-sm font-semibold text-white bg-emerald-700"
-              >
+              </Button>
+              <Button onClick={handleSave} className="flex-[2]">
                 Save {values.length} Values
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
         {/* Saving / Done */}
         {step === 'saving' && (
-          <div className="text-center py-12">
-            <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-gray-600">Saving to Firestore...</p>
+          <div className="py-12 text-center" role="status">
+            <div className="mx-auto mb-4 h-7 w-7 animate-spin rounded-full border-2 border-sage border-t-transparent" />
+            <p className="text-sm text-ink-2">Saving to Firestore...</p>
           </div>
         )}
 
         {step === 'done' && (
-          <div className="text-center py-12">
-            <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Check className="w-6 h-6 text-emerald-600" />
+          <div className="animate-fade-up py-12 text-center" role="status">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-sage-pale">
+              <Check className="h-6 w-6 text-sage" />
             </div>
-            <p className="text-sm font-semibold text-gray-900">Record saved!</p>
-            <p className="text-xs text-gray-400 mt-1">Redirecting to dashboard...</p>
+            <p className="font-serif text-xl font-medium text-ink">Record saved!</p>
+            <p className="mt-1 text-xs text-ink-3">Redirecting to dashboard...</p>
           </div>
         )}
       </main>

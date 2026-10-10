@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/header'
+import { Button } from '@/components/ui/button'
+import { Chip } from '@/components/ui/tabs'
 import { useAuth } from '@/components/providers/auth-provider'
 import { useLabRecords } from '@/lib/hooks/use-lab-records'
 import { addLabRecord } from '@/lib/firebase/firestore'
@@ -88,61 +90,62 @@ export default function NewRecordPage() {
 
   return (
     <>
-      <Header title="Add Record" showBack />
-      <main className="px-4 py-4">
+      <Header title="Add Record" emphasis="Record" showBack />
+      <main className="px-4 py-5">
         {/* Date & Lab */}
-        <div className="flex gap-3 mb-5">
-          <div className="flex-1">
-            <label className="text-[11px] uppercase tracking-wider text-gray-400 block mb-1">Date</label>
+        <div className="mb-5 flex gap-3">
+          <div className="min-w-0 flex-1">
+            <label htmlFor="record-date" className="label mb-1.5 block text-ink-3">Date</label>
             <input
+              id="record-date"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg font-mono text-sm bg-white"
+              className="field tabular"
             />
           </div>
-          <div className="flex-1">
-            <label className="text-[11px] uppercase tracking-wider text-gray-400 block mb-1">Lab</label>
+          <div className="min-w-0 flex-1">
+            <label htmlFor="record-lab" className="label mb-1.5 block text-ink-3">Lab</label>
             <input
+              id="record-lab"
               value={lab}
               onChange={(e) => setLab(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white"
+              className="field"
             />
           </div>
         </div>
 
         {/* Panel Tabs */}
-        <div className="flex flex-wrap gap-1.5 mb-5">
+        <div className="mb-5 flex flex-wrap gap-2">
           {PANELS.map((panel) => (
-            <button
+            <Chip
               key={panel.id}
+              selected={activePanel === panel.id}
               onClick={() => setActivePanel(panel.id)}
-              className={`px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
-                activePanel === panel.id
-                  ? 'border-emerald-700 bg-emerald-50 text-emerald-700'
-                  : 'border-gray-200 bg-white text-gray-500'
-              }`}
             >
               {panel.label}
-            </button>
+            </Chip>
           ))}
         </div>
 
         {/* Test Fields */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="mb-6 grid grid-cols-2 gap-x-3 gap-y-4 rounded-card border border-hair bg-vellum p-4">
           {panelTests.map((testName) => {
             const ref = REFERENCE_RANGES[testName]
             if (!ref) return null
+            const id = `test-${testName.replace(/\W+/g, '-')}`
             return (
-              <div key={testName}>
-                <label className="text-[11px] text-gray-500 block mb-1">{ref.label}</label>
+              <div key={testName} className="min-w-0">
+                <label htmlFor={id} className="mb-1.5 block truncate text-xs font-medium text-ink-2">{ref.label}</label>
                 <input
+                  id={id}
                   type="number"
+                  inputMode="decimal"
                   step="any"
                   value={values[testName] ?? ''}
                   onChange={(e) => updateValue(testName, e.target.value)}
                   placeholder={`${ref.min}–${ref.max < 900 ? ref.max : '—'}`}
-                  className="w-full px-2.5 py-2 border border-gray-200 rounded-md font-mono text-sm bg-white"
+                  className="field tabular"
                 />
               </div>
             )
@@ -151,26 +154,20 @@ export default function NewRecordPage() {
 
         {/* Summary of filled values */}
         {Object.keys(values).filter((k) => values[k] !== '').length > 0 && (
-          <div className="mb-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+          <p className="mb-4 flex items-center gap-2 text-[13px] text-sage tabular" role="status">
+            <span className="h-1.5 w-1.5 rounded-full bg-sage" aria-hidden />
             {Object.keys(values).filter((k) => values[k] !== '').length} test value(s) entered across panels
-          </div>
+          </p>
         )}
 
         {/* Action Buttons */}
         <div className="flex gap-3">
-          <button
-            onClick={() => router.back()}
-            className="flex-1 py-3 border border-gray-200 rounded-lg text-sm text-gray-500 bg-white"
-          >
+          <Button variant="secondary" onClick={() => router.back()} className="flex-1">
             Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-[2] py-3 rounded-lg text-sm font-semibold text-white bg-emerald-700 disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={handleSave} disabled={saving} className="flex-[2]">
             {saving ? 'Saving...' : 'Save Record'}
-          </button>
+          </Button>
         </div>
       </main>
     </>

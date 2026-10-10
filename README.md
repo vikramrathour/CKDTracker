@@ -37,7 +37,7 @@ It is built for **one patient**. Most reports come from Metropolis Healthcare (I
 | Upload | `/upload` | Drop in a PDF. The server extracts values, you review them, then save them as a record |
 | Trends | `/trends` | Charts for key markers (Creatinine, eGFR, Tacrolimus, Potassium, Haemoglobin, Sodium) with the reference band shown |
 | Analysis | `/analysis` | CKD stage from eGFR, volatility (SD/CV), times out of range, eGFR compared with the age-expected value |
-| Medications | `/medications` | Current prescription list from the personal-data module (static for now, see [status](#implementation-status)) |
+| Medications | `/medications` | Active medications from Firestore (no add/edit screen yet, see [status](#implementation-status)) |
 | Settings | `/settings` | Account info, sign out |
 
 Panels tracked are **Hemogram, Kidney Function, Tacrolimus, Electrolytes, Lipid Profile, and Urine Routine**.
@@ -51,7 +51,7 @@ The app is installable as a PWA through the web manifest (`app/manifest.ts`). Of
 | Layer | Choice |
 |---|---|
 | Framework | Next.js 14 (App Router), React 18, TypeScript (strict) |
-| Styling | Tailwind CSS 3, `lucide-react` icons, small in-house UI kit in `components/ui/` |
+| Styling | Tailwind CSS 3 with a design system ported from vikramrathour.com (Newsreader + Plus Jakarta Sans, warm paper / ink / terracotta palette, light and dark), `lucide-react` icons, in-house UI kit in `components/ui/` |
 | Charts | Recharts |
 | Auth | Firebase Authentication (Google provider) |
 | Database | Cloud Firestore (client SDK, modular v10) |
@@ -67,7 +67,7 @@ The app is installable as a PWA through the web manifest (`app/manifest.ts`). Of
 
 ### Prerequisites
 
-- Node.js 18.17 or later (20 LTS recommended)
+- Node.js 22 or later (required by `firebase-admin`)
 - A Firebase project with **Authentication (Google provider)** and **Firestore** turned on
 - A Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey). This is optional and only needed for the AI parsing fallback.
 
@@ -89,7 +89,10 @@ Fill in `.env.local`:
 |---|---|---|
 | `NEXT_PUBLIC_FIREBASE_API_KEY` … `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase console → Project settings → General → Your apps | Yes |
 | `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Project settings → Cloud Messaging → Web Push certificates | Only for push |
-| `GEMINI_API_KEY` | Google AI Studio | Only for the AI fallback |
+| `GEMINI_API_KEY` | Google AI Studio, on a **billing-enabled** project (the free tier may use data for training) | Only for the AI fallback |
+| `GEMINI_MODEL` | e.g. `gemini-2.5-flash` (default) | No |
+| `FIREBASE_SERVICE_ACCOUNT_B64` | Base64 of a service-account JSON (Project settings → Service accounts). Server-only | Only for Admin scripts |
+| `NEXT_PUBLIC_ENABLE_DEMO` | `1` shows a "Load demo data" button on an empty dashboard | No |
 | `CRON_SECRET` | `openssl rand -hex 32` | Not used yet |
 
 If `NEXT_PUBLIC_FIREBASE_API_KEY` is missing, Firebase skips initialisation and does not raise an error. `auth` and `db` are then `undefined`, and the app stays on the loading or login screen.
@@ -112,7 +115,7 @@ In the Firebase console, add your local and production hostnames under **Authent
 npm run dev        # http://localhost:3000
 ```
 
-The first time you sign in, the app finds you have no records and seeds records from the personal-data module. See [Personal data](#personal-data).
+A new account starts empty. Upload a report or add one manually; with `NEXT_PUBLIC_ENABLE_DEMO=1` you can load synthetic demo records instead. See [Personal data](#personal-data).
 
 ### Commands
 
@@ -124,7 +127,12 @@ npm run lint         # next lint
 npx tsc --noEmit     # fast type-check without building
 ```
 
-There is no test framework yet.
+```bash
+npm test                                      # Vitest, all suites (synthetic data only)
+npx vitest run tests/date.test.ts -t "DD/MM"  # one file / one test
+```
+
+Tests cover the date and Metropolis parsers, scoring, trends, deltas, analysis, and a consistency check across REFERENCE_RANGES, PANELS, the parser patterns and the sample data.
 
 ---
 
@@ -166,16 +174,12 @@ Key points:
 
 ### Personal data
 
-The repo is public, so patient-specific data stays out of git. Seed lab history, the prescription list and the doctor/hospital name come from the `@personal-data` alias (`tsconfig.json`):
+The repo is public, so patient-specific data stays out of git:
 
-- `lib/personal/local.ts`: **gitignored**, holds the real data. Used whenever it exists.
-- `lib/personal/sample.ts`: committed, synthetic. Used on a fresh clone.
+- `lib/personal/local.ts`: **gitignored**, holds the owner's real data. Only the Admin script `scripts/seed-owner.ts` reads it, to import medications and doctor details into Firestore: `npx tsx scripts/seed-owner.ts <uid> --dry-run` (needs `FIREBASE_SERVICE_ACCOUNT_B64`). App code never imports it, so a deploy can't leak it to other users.
+- `lib/personal/sample.ts`: committed, synthetic demo data.
 
-To use your own data, copy `sample.ts` to `local.ts` and edit it. Both files implement `PersonalData` from `lib/personal/types.ts`. The original prototype `kidney-health-tracker.jsx` also contains real data and is gitignored.
-
-### First-login seeding
-
-`lib/hooks/use-lab-records.ts` writes `SEED_RECORDS` to Firestore whenever the signed-in user has **zero** records. Editing seed data only affects users who haven't signed in yet. Deleting every record will trigger a re-seed on the next load.
+The original prototype `kidney-health-tracker.jsx` also contains real data and is gitignored.
 
 ---
 
@@ -248,7 +252,7 @@ These are heuristics for tracking trends. They are not clinically validated.
 |---|---|
 | Firestore rules | Deployed. `users/{uid}/**` is owner-only. `sharedLinks` is fully closed |
 | Storage rules | Deployed. `lab-pdfs/{uid}/**` is owner-only. Uploads must be `application/pdf` and under 20 MB |
-| `/api/pdf/parse` | ⚠️ **No auth check.** Anyone who has the URL can call it and use up your Gemini quota. Fix: send the Firebase ID token and verify it with the Admin SDK, or move parsing to the client |
+| `/api/pdf/parse` | Requires a Firebase ID token (verified with the Admin SDK), PDF only, max 10 MB |
 | Share links | `getSharedLinkByToken()` lists the whole collection, so an open read rule would expose every token. Redesign before enabling: key docs by token and allow `get` only, or serve shared views from a server route |
 | Secrets | `.env*` is gitignored. Only `GEMINI_API_KEY` (and `CRON_SECRET`) are secret |
 
@@ -310,14 +314,14 @@ kidney-health-tracker.jsx  Original single-file prototype (gitignored, not impor
 | Dashboard, trends, analysis | ✅ Working |
 | Edit a record | 🟡 `updateLabRecord()` exists, but there is no UI for it |
 | Store uploaded PDFs | 🟡 `uploadPDF()` and Storage rules exist, but the upload page doesn't call them, so `pdfPath` is never set |
-| Medications | 🟡 The page renders the static `DEFAULT_MEDICATIONS`. Firestore CRUD exists but is unused |
+| Medications | 🟡 Read from Firestore; no add/edit screen yet (import yours with `scripts/seed-owner.ts`) |
 | Profile editing / settings | 🟡 Settings shows only email and sign-out |
 | Push notifications (lab reminders) | 🔴 `messaging.ts` is never called. The service worker reads `self.__FIREBASE_CONFIG__`, which is never set |
 | Shareable doctor view | 🔴 Data-layer stub only. Blocked on the redesign described under [Security](#security) |
 | Offline / service-worker caching | 🔴 `serwist` / `@serwist/next` installed but not configured |
 | PDF export | 🔴 `@react-pdf/renderer` installed but unused |
-| Gemini fallback | 🔴 Uses `gemini-1.5-flash`, which Google has retired, so the fallback currently fails and falls back to the regex result. Update the model name |
-| Tests | 🔴 None. `lib/calculations/` and the parse regexes are the best first targets |
+| Gemini fallback | ✅ `@google/genai` with structured output; model from `GEMINI_MODEL` |
+| Tests | ✅ Vitest, 252 tests (parsers, calculations, consistency) |
 
 Dependencies that are installed but unused: `react-hook-form`, `zod`, `@react-pdf/renderer`, `serwist`, `@serwist/next`.
 

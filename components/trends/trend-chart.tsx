@@ -1,22 +1,28 @@
 'use client'
 
+import { useId } from 'react'
 import {
   ComposedChart,
   Area,
   XAxis,
   YAxis,
   Tooltip,
+  ReferenceArea,
   ReferenceLine,
   CartesianGrid,
   ResponsiveContainer,
 } from 'recharts'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
+import { useThemeColors, type ThemeColors } from '@/components/ui/status'
 import type { TrendPoint } from '@/lib/types/analysis'
+
+/** Palette key for the series line (ink / terra / sage family). */
+export type TrendTone = 'ink' | 'ink2' | 'terra' | 'terraDk' | 'sage'
 
 interface TrendChartProps {
   label: string
   insight: string
-  color: string
+  tone: TrendTone
   points: TrendPoint[]
   refLow?: number
   refHigh?: number | null
@@ -36,15 +42,18 @@ interface TrendChartProps {
 export function TrendChart({
   label,
   insight,
-  color,
+  tone,
   points,
   refLow,
   refHigh,
   stats,
   higherIsBetter,
 }: TrendChartProps) {
+  const c: ThemeColors = useThemeColors()
+  const gradientId = `tg-${useId().replace(/:/g, '')}`
   if (points.length < 2) return null
 
+  const color = c[tone]
   const data = points.map((p) => ({
     date: formatDate(p.date, 'dd MMM'),
     value: p.value,
@@ -57,26 +66,24 @@ export function TrendChart({
     ? stats.slope > 0.01 ? 'Rising' : stats.slope < -0.01 ? 'Falling' : 'Stable'
     : 'Stable'
 
+  // Same good/bad rule as before: rising is good only when higher is better.
+  const changeIsGood = stats?.changePct != null && stats.changePct > 0 ? !!higherIsBetter : !higherIsBetter
+
+  const hasHigh = refHigh != null && refHigh < 900
+  const hasLow = refLow != null && refLow > 0
+  const tick = { fontSize: 10, fill: c.ink3, fontFamily: 'var(--font-sans)' }
+
   return (
-    <div className="bg-white rounded-xl p-4 border border-gray-100 mb-3.5">
-      <div className="flex justify-between items-start mb-1">
-        <div>
-          <div className="text-sm font-semibold text-gray-900">{label}</div>
-          <div className="text-[11px] text-gray-400">{insight}</div>
+    <section className="mb-3.5 rounded-card border border-hair bg-vellum p-4">
+      <div className="mb-1 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-serif text-xl font-medium leading-snug tracking-[-.015em] text-ink">{label}</h3>
+          <p className="mt-0.5 text-[13px] leading-snug text-ink-3">{insight}</p>
         </div>
         {stats && (
-          <div className="text-right flex-shrink-0">
-            <div className="font-mono text-xl font-bold tracking-tight" style={{ color }}>
-              {stats.last}
-            </div>
-            <div
-              className="text-[11px]"
-              style={{
-                color: stats.changePct != null && stats.changePct > 0
-                  ? (higherIsBetter ? '#10b981' : '#ef4444')
-                  : (higherIsBetter ? '#ef4444' : '#10b981'),
-              }}
-            >
+          <div className="flex-shrink-0 text-right">
+            <div className="num text-[28px] leading-none text-ink">{stats.last}</div>
+            <div className={cn('mt-1 text-[11px] font-semibold tabular', changeIsGood ? 'text-sage' : 'text-terra-dk')}>
               {trendDir} {trendLabel}{' '}
               {stats.changePct != null
                 ? `(${stats.changePct > 0 ? '+' : ''}${stats.changePct.toFixed(1)}%)`
@@ -88,68 +95,76 @@ export function TrendChart({
 
       {/* Stats row */}
       {stats && (
-        <div className="flex gap-4 mb-2 mt-1">
+        <dl className="mb-2 mt-3 flex gap-4 border-t border-hair pt-2.5">
           {[
             { l: 'Min', v: stats.min.toFixed(2) },
             { l: 'Avg', v: stats.avg.toFixed(2) },
             { l: 'Max', v: stats.max.toFixed(2) },
             { l: 'n', v: stats.count },
           ].map((s) => (
-            <div key={s.l} className="text-[10px] text-gray-400">
-              <span className="uppercase tracking-wider">{s.l}</span>{' '}
-              <span className="font-mono font-semibold text-gray-500">{s.v}</span>
+            <div key={s.l} className="flex items-baseline gap-1.5">
+              <dt className="text-[10px] font-bold uppercase tracking-[.08em] text-ink-3">{s.l}</dt>
+              <dd className="text-[13px] font-semibold text-ink-2 tabular">{s.v}</dd>
             </div>
           ))}
-        </div>
+        </dl>
       )}
 
       {/* Chart */}
-      <div className="w-full h-40">
+      <div className="h-40 w-full">
         <ResponsiveContainer>
           <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -20 }}>
             <defs>
-              <linearGradient id={`tg-${label.replace(/\s/g, '')}`} x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.12} />
                 <stop offset="100%" stopColor={color} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 10, fill: '#9ca3af', fontFamily: 'monospace' }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis
-              tick={{ fontSize: 10, fill: '#9ca3af', fontFamily: 'monospace' }}
-              axisLine={false}
-              tickLine={false}
-              domain={['auto', 'auto']}
-            />
-            <Tooltip
-              contentStyle={{
-                fontSize: 12,
-                border: '1px solid #e5e7eb',
-                borderRadius: 8,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-              }}
-            />
-            {refHigh != null && refHigh < 900 && (
-              <ReferenceLine
-                y={refHigh}
-                stroke="#ef4444"
-                strokeDasharray="4 3"
-                strokeWidth={1}
-                label={{ value: `High ${refHigh}`, position: 'insideTopRight', fontSize: 9, fill: '#ef4444' }}
+            {(hasLow || hasHigh) && (
+              <ReferenceArea
+                y1={hasLow ? refLow : undefined}
+                y2={hasHigh ? (refHigh as number) : undefined}
+                fill={c.sagePale}
+                fillOpacity={0.7}
+                stroke="none"
+                ifOverflow="hidden"
               />
             )}
-            {refLow != null && refLow > 0 && (
+            <CartesianGrid stroke={c.hair} vertical={false} />
+            <XAxis dataKey="date" tick={tick} axisLine={false} tickLine={false} />
+            <YAxis tick={tick} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
+            <Tooltip
+              cursor={{ stroke: c.hair2 }}
+              contentStyle={{
+                fontSize: 12,
+                fontFamily: 'var(--font-sans)',
+                background: c.vellum,
+                color: c.ink,
+                border: `1px solid ${c.hair2}`,
+                borderRadius: 6,
+                boxShadow: 'var(--shadow-soft)',
+              }}
+              labelStyle={{ color: c.ink3, fontWeight: 600 }}
+              itemStyle={{ color: c.ink }}
+            />
+            {hasHigh && (
               <ReferenceLine
-                y={refLow}
-                stroke="#f59e0b"
+                y={refHigh as number}
+                stroke={c.sage}
+                strokeOpacity={0.5}
                 strokeDasharray="4 3"
                 strokeWidth={1}
-                label={{ value: `Low ${refLow}`, position: 'insideBottomRight', fontSize: 9, fill: '#f59e0b' }}
+                label={{ value: `High ${refHigh}`, position: 'insideTopRight', fontSize: 9, fill: c.ink3 }}
+              />
+            )}
+            {hasLow && (
+              <ReferenceLine
+                y={refLow}
+                stroke={c.sage}
+                strokeOpacity={0.5}
+                strokeDasharray="4 3"
+                strokeWidth={1}
+                label={{ value: `Low ${refLow}`, position: 'insideBottomRight', fontSize: 9, fill: c.ink3 }}
               />
             )}
             <Area
@@ -157,14 +172,14 @@ export function TrendChart({
               dataKey="value"
               stroke={color}
               strokeWidth={2}
-              fill={`url(#tg-${label.replace(/\s/g, '')})`}
-              dot={{ r: 4, fill: color, strokeWidth: 0 }}
-              activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }}
+              fill={`url(#${gradientId})`}
+              dot={{ r: 3.5, fill: color, strokeWidth: 0 }}
+              activeDot={{ r: 5.5, stroke: c.vellum, strokeWidth: 2 }}
               name={label}
             />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </section>
   )
 }

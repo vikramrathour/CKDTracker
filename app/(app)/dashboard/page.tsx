@@ -1,6 +1,6 @@
 'use client'
 
-import { Header } from '@/components/layout/header'
+import { Header, primaryIconButton } from '@/components/layout/header'
 import { HealthScoreRing } from '@/components/dashboard/health-score-ring'
 import { SystemScores } from '@/components/dashboard/system-scores'
 import { CriticalMetricCard } from '@/components/dashboard/critical-metric-card'
@@ -9,7 +9,9 @@ import { PanelOverview } from '@/components/dashboard/panel-overview'
 import { useLabRecords, getTrendPoints, getValueFromRecord } from '@/lib/hooks/use-lab-records'
 import { computeHealthScore } from '@/lib/calculations/health-score'
 import { CardSkeleton } from '@/components/ui/skeleton'
-import { formatDate } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { interactiveCard } from '@/components/ui/card'
+import { cn, formatDate } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
@@ -60,7 +62,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <>
-        <Header title="CKD Tracker" />
+        <Header title="CKD Tracker" emphasis="Tracker" />
         <main className="px-4 py-4 space-y-4">
           <CardSkeleton />
           <div className="grid grid-cols-3 gap-2.5">
@@ -78,22 +80,24 @@ export default function DashboardPage() {
   if (records.length === 0) {
     return (
       <>
-        <Header title="CKD Tracker" />
-        <main className="px-4 py-4 text-center pt-20">
-          <div className="text-5xl mb-4">🫘</div>
-          <div className="text-base font-semibold mb-2">No records yet</div>
-          <div className="text-sm text-gray-500">Add your first lab report to see your health dashboard.</div>
+        <Header title="CKD Tracker" emphasis="Tracker" />
+        <main className="px-4 pt-16 text-center">
+          <p className="eyebrow mb-3">Getting started</p>
+          <h2 className="font-serif text-[2rem] font-normal leading-tight tracking-[-.02em] text-ink">
+            No records <em className="italic text-terra-dk">yet</em>
+          </h2>
+          <p className="mx-auto mt-3 max-w-[34ch] text-[15px] text-ink-2">Add your first lab report to see your health dashboard.</p>
           {DEMO_ENABLED && (
-            <div className="mt-6">
-              <button
+            <div className="mt-8">
+              <Button
                 onClick={loadDemoData}
-                disabled={demoLoading || !user}
-                className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-sm font-semibold shadow-sm disabled:opacity-50"
+                disabled={!user}
+                loading={demoLoading}
               >
                 {demoLoading ? 'Loading demo data…' : 'Load demo data'}
-              </button>
-              <div className="text-[11px] text-gray-400 mt-2">Synthetic sample records, not real results.</div>
-              {demoError && <div className="text-xs text-red-500 mt-2">{demoError}</div>}
+              </Button>
+              <p className="mt-3 text-xs text-ink-3">Synthetic sample records, not real results.</p>
+              {demoError && <p role="alert" className="mt-2 text-sm text-critical">{demoError}</p>}
             </div>
           )}
         </main>
@@ -125,31 +129,38 @@ export default function DashboardPage() {
     <>
       <Header
         title="CKD Tracker"
+        emphasis="Tracker"
         subtitle={`Last: ${formatDate(latestRecord.recordDate, 'dd MMM yy')}`}
         actions={
           <button
+            type="button"
             onClick={() => router.push('/upload')}
-            className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center shadow-sm"
+            aria-label="Upload report"
+            className={primaryIconButton}
           >
-            <Upload className="w-4 h-4" />
+            <Upload className="h-[18px] w-[18px]" />
           </button>
         }
       />
-      <main className="px-4 py-4 space-y-4">
+      <main className="space-y-4 px-4 py-4">
         {/* Health Score — tap to view analysis */}
         <div
           onClick={() => router.push('/analysis')}
-          className="bg-white rounded-xl p-4 border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+          className={cn('rounded-card border border-hair bg-vellum p-4 shadow-soft', interactiveCard)}
         >
           <div className="flex items-center gap-4">
-            <HealthScoreRing score={healthScore.overall} size={72} label="Overall" />
-            <div className="flex-1">
-              <div className="text-[15px] font-bold text-gray-900">Health Score</div>
+            <HealthScoreRing score={healthScore.overall} size={80} label="Overall" />
+            <div className="min-w-0 flex-1">
+              <h2 className="font-serif text-[1.375rem] font-medium leading-tight tracking-[-.015em] text-ink">
+                Health <em className="italic text-terra-dk">score</em>
+              </h2>
               <QuickStats records={records} trajectory={trajectory} />
             </div>
           </div>
           <SystemScores scores={healthScore.systems} />
-          <div className="text-[10px] text-gray-400 text-center mt-3">Tap for deep analysis →</div>
+          <div className="mt-4 text-center">
+            <span className="tlink text-[13px]">Tap for deep analysis →</span>
+          </div>
         </div>
 
         {/* Critical Metrics */}
@@ -172,15 +183,19 @@ export default function DashboardPage() {
             {alerts.map((v) => (
               <div
                 key={v.testName}
-                className="bg-red-50 rounded-lg p-3 border-l-[3px] border-red-500"
+                role="status"
+                className="flex gap-3 rounded-card border border-hair-hot bg-terra-pale/70 p-3.5"
               >
-                <div className="text-sm font-semibold text-red-700">
-                  {v.testName}: {v.value} {v.unit}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">
-                  {v.value < (v.referenceMin ?? 0)
-                    ? `Below normal range (${v.referenceMin}–${v.referenceMax})`
-                    : `Above normal range (${v.referenceMin}–${v.referenceMax})`}
+                <span className="pulse-dot mt-[7px]" aria-hidden />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-terra-dk tabular">
+                    {v.testName}: {v.value} {v.unit}
+                  </div>
+                  <div className="mt-0.5 text-[13px] text-ink-2 tabular">
+                    {v.value < (v.referenceMin ?? 0)
+                      ? `Below normal range (${v.referenceMin}–${v.referenceMax})`
+                      : `Above normal range (${v.referenceMin}–${v.referenceMax})`}
+                  </div>
                 </div>
               </div>
             ))}

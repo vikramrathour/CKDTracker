@@ -19,7 +19,8 @@ function scoreValue(val: LabValue): number {
   const deviation = val.value < min ? min - val.value : val.value - max
   const deviationPercent = range > 0 ? deviation / range : 1
 
-  // Score decays quadratically from 100 to 0
+  // Score decays from 100 to 0 as (deviation / range width)^0.8 — steep near
+  // the range edge, flattening out; a deviation of one full range width or more scores 0
   return Math.max(0, Math.round(100 * (1 - Math.min(deviationPercent, 1) ** 0.8)))
 }
 

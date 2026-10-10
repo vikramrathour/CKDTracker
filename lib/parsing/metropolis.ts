@@ -82,7 +82,9 @@ export const METROPOLIS_PATTERNS: Record<string, PatternDef> = {
   'BUN/Creatinine Ratio': { pattern: line('BUN[ \\t]*\\/[ \\t]*(?:Serum[ \\t]+)?Creatinine[ \\t]+Ratio') },
 
   // Tacrolimus
-  'Tacrolimus': { pattern: line('Tacrolimus(?:[ \\t]+(?:Trough|Levels?))?') },
+  // Up to three qualifier words before the value, same line only, e.g.
+  // "Tacrolimus Trough Level", "Tacrolimus Whole Blood (EDTA)", "Tacrolimus C0"
+  'Tacrolimus': { pattern: line('Tacrolimus(?:[ \\t]+(?:Trough|Levels?|Whole|Blood|C0|\\(EDTA\\))){0,3}') },
 
   // Electrolytes
   'Sodium': { pattern: line('(?:Serum[ \\t]+)?Sodium') },

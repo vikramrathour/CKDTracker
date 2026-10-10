@@ -18,8 +18,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      <div className="flex min-h-screen items-center justify-center bg-canvas">
+        <Loader2 className="h-7 w-7 animate-spin text-terra" aria-label="Loading" />
       </div>
     )
   }
@@ -27,11 +27,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-gray-50 max-w-lg mx-auto relative">
+    <div className="relative mx-auto min-h-screen max-w-lg bg-canvas">
       {children}
       <BottomNav />
-      {/* Spacer for bottom nav */}
-      <div className="h-20" />
+      {/* Spacer for bottom nav + home indicator */}
+      <div className="h-[calc(5.5rem+env(safe-area-inset-bottom))]" />
     </div>
   )
 }

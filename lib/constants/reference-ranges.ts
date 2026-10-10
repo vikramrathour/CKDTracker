@@ -14,11 +14,11 @@ export interface ReferenceRange {
 
 export const REFERENCE_RANGES: Record<string, ReferenceRange> = {
   // Hemogram
-  'Hemoglobin': { min: 13.0, max: 17.0, unit: 'g/dL', panel: 'hemogram', label: 'Hemoglobin', weight: 7 },
-  'RBC Count': { min: 4.5, max: 5.5, unit: 'million/µL', panel: 'hemogram', label: 'RBC Count', weight: 4 },
+  'Hemoglobin': { min: 13.0, max: 17.0, unit: 'g/dL', panel: 'hemogram', label: 'Hemoglobin', higherIsBetter: true, weight: 7 },
+  'RBC Count': { min: 4.5, max: 5.5, unit: 'million/µL', panel: 'hemogram', label: 'RBC Count', higherIsBetter: true, weight: 4 },
   'WBC Count': { min: 4000, max: 11000, unit: '/µL', panel: 'hemogram', label: 'WBC Count', weight: 5 },
   'Platelet Count': { min: 150000, max: 410000, unit: '/µL', panel: 'hemogram', label: 'Platelet Count', weight: 5 },
-  'PCV/Hematocrit': { min: 40, max: 50, unit: '%', panel: 'hemogram', label: 'PCV/Hematocrit', weight: 4 },
+  'PCV/Hematocrit': { min: 40, max: 50, unit: '%', panel: 'hemogram', label: 'PCV/Hematocrit', higherIsBetter: true, weight: 4 },
   'MCV': { min: 83, max: 101, unit: 'fL', panel: 'hemogram', label: 'MCV', weight: 3 },
   'MCH': { min: 27, max: 32, unit: 'pg', panel: 'hemogram', label: 'MCH', weight: 3 },
   'MCHC': { min: 31.5, max: 34.5, unit: 'g/dL', panel: 'hemogram', label: 'MCHC', weight: 3 },

@@ -16,10 +16,10 @@ export function QuickStats({ records, trajectory }: QuickStatsProps) {
   const last = records[records.length - 1]
 
   return (
-    <div className="flex items-center gap-2 text-xs text-gray-500">
-      <span>{records.length} records</span>
-      <span>·</span>
-      <span>{formatDate(first.recordDate, 'MMM yy')} → {formatDate(last.recordDate, 'MMM yy')}</span>
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] text-ink-3">
+      <span className="tabular">{records.length} records</span>
+      <span aria-hidden>·</span>
+      <span className="tabular">{formatDate(first.recordDate, 'MMM yy')} → {formatDate(last.recordDate, 'MMM yy')}</span>
       <Badge
         variant={
           trajectory === 'improving' ? 'good' :

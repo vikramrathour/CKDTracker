@@ -1,7 +1,7 @@
 'use client'
 
 import { Header } from '@/components/layout/header'
-import { TrendChart } from '@/components/trends/trend-chart'
+import { TrendChart, type TrendTone } from '@/components/trends/trend-chart'
 import { useLabRecords, getTrendPoints } from '@/lib/hooks/use-lab-records'
 import { ChartSkeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/utils'
@@ -13,65 +13,58 @@ const range = (testName: string) => REFERENCE_RANGES[testName]
 const KEY_METRICS: {
   testName: string
   label: string
-  color: string
+  tone: TrendTone
   refLow: number | undefined
   refHigh: number | null
   insight: string
-  higherIsBetter: boolean
 }[] = [
   {
     testName: 'Creatinine',
     label: 'Creatinine',
-    color: '#ef4444',
+    tone: 'terra',
     refLow: range('Creatinine')?.min,
     refHigh: range('Creatinine')?.max ?? null,
     insight: 'Kidney filtration marker — lower is better within range',
-    higherIsBetter: false,
   },
   {
     testName: 'eGFR',
     label: 'eGFR',
-    color: '#2d6a4f',
+    tone: 'sage',
     refLow: range('eGFR')?.min,
     refHigh: null, // no upper concern for eGFR
     insight: 'Kidney function rate — higher is better',
-    higherIsBetter: true,
   },
   {
     testName: 'Tacrolimus',
     label: 'Tacrolimus',
-    color: '#7c3aed',
+    tone: 'ink',
     refLow: range('Tacrolimus')?.min,
     refHigh: range('Tacrolimus')?.max ?? null,
     insight: `Immunosuppressant level — target ${range('Tacrolimus')?.min}–${range('Tacrolimus')?.max} ng/mL`,
-    higherIsBetter: false,
   },
   {
     testName: 'Potassium',
     label: 'Potassium',
-    color: '#e67e22',
+    tone: 'terraDk',
     refLow: range('Potassium')?.min,
     refHigh: range('Potassium')?.max ?? null,
     insight: 'Electrolyte — some transplant medications can raise it',
-    higherIsBetter: false,
   },
   {
     testName: 'Hemoglobin',
     label: 'Haemoglobin',
-    color: '#2563eb',
+    tone: 'sage',
     refLow: range('Hemoglobin')?.min,
     refHigh: range('Hemoglobin')?.max ?? null,
     insight: 'Oxygen-carrying capacity — stable is good',
-    higherIsBetter: true,
   },
   {
     testName: 'Sodium',
     label: 'Sodium',
-    color: '#6b7280',
+    tone: 'ink2',
     refLow: range('Sodium')?.min,
     refHigh: range('Sodium')?.max ?? null,
     insight: 'Fluid/electrolyte balance indicator',
-    higherIsBetter: false,
   },
 ]
 
@@ -107,7 +100,7 @@ export default function TrendsPage() {
   if (loading) {
     return (
       <>
-        <Header title="Key Trends" />
+        <Header title="Key Trends" emphasis="Trends" />
         <main className="px-4 py-4 space-y-4">
           {[1, 2, 3].map((i) => <ChartSkeleton key={i} />)}
         </main>
@@ -120,11 +113,11 @@ export default function TrendsPage() {
 
   return (
     <>
-      <Header title="Key Trends" />
+      <Header title="Key Trends" emphasis="Trends" />
       <main className="px-4 py-4">
-        <div className="text-xs text-gray-400 mb-4">
+        <p className="mb-4 text-[13px] text-ink-3 tabular">
           {records.length} readings · {first ? formatDate(first.recordDate, 'MMM yy') : ''} → {last ? formatDate(last.recordDate, 'MMM yy') : ''}
-        </div>
+        </p>
         {KEY_METRICS.map((metric) => {
           const points = getTrendPoints(records, metric.testName)
           const stats = computeStats(points)
@@ -133,12 +126,12 @@ export default function TrendsPage() {
               key={metric.testName}
               label={metric.label}
               insight={metric.insight}
-              color={metric.color}
+              tone={metric.tone}
               points={points}
               refLow={metric.refLow}
               refHigh={metric.refHigh}
               stats={stats}
-              higherIsBetter={metric.higherIsBetter}
+              higherIsBetter={!!range(metric.testName)?.higherIsBetter}
             />
           )
         })}

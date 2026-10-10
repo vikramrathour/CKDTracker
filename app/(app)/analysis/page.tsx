@@ -230,11 +230,12 @@ const CKD_BAR = [
   { l: 'G5', r: '<15', check: (v: number) => v < 15 },
 ]
 
+// alert → deep red (sparingly), warning → terra, good → sage, info → neutral ink
 const TYPE_COLORS = {
-  alert: { bg: 'bg-red-50', text: 'text-red-600', dot: 'bg-red-500' },
-  warning: { bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500' },
-  good: { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500' },
-  info: { bg: 'bg-blue-50', text: 'text-blue-600', dot: 'bg-blue-500' },
+  alert: { bg: 'bg-critical-pale', text: 'text-critical', dot: 'bg-critical', edge: 'border-l-critical' },
+  warning: { bg: 'bg-terra-pale', text: 'text-terra-dk', dot: 'bg-terra', edge: 'border-l-terra' },
+  good: { bg: 'bg-sage-pale', text: 'text-sage', dot: 'bg-sage', edge: 'border-l-sage' },
+  info: { bg: 'bg-recess', text: 'text-ink-2', dot: 'bg-ink-3', edge: 'border-l-hair-2' },
 }
 
 export default function AnalysisPage() {
@@ -251,7 +252,7 @@ export default function AnalysisPage() {
   if (loading) {
     return (
       <>
-        <Header title="Deep Analysis" />
+        <Header title="Deep Analysis" emphasis="Deep" />
         <main className="px-4 py-4 space-y-4">
           {[1, 2, 3].map((i) => <CardSkeleton key={i} />)}
         </main>
@@ -262,9 +263,9 @@ export default function AnalysisPage() {
   if (records.length < 2) {
     return (
       <>
-        <Header title="Deep Analysis" />
-        <main className="px-4 py-4 text-center pt-20">
-          <div className="text-sm text-gray-500">Need at least 2 records for analysis.</div>
+        <Header title="Deep Analysis" emphasis="Deep" />
+        <main className="px-4 pt-20 text-center">
+          <p className="text-[15px] text-ink-2">Need at least 2 records for analysis.</p>
         </main>
       </>
     )
@@ -276,70 +277,75 @@ export default function AnalysisPage() {
 
   return (
     <>
-      <Header title="Deep Analysis" />
+      <Header title="Deep Analysis" emphasis="Deep" />
       <main className="px-4 py-4">
-        <div className="text-xs text-gray-400 mb-4">
+        <p className="mb-4 text-[13px] text-ink-3 tabular">
           Quantitative assessment across {records.length} data points
-        </div>
+        </p>
 
         {/* CKD Classification */}
         {egfr != null && (
-          <div className="bg-white rounded-xl p-4 border border-gray-100 mb-3.5">
-            <div className="text-[11px] uppercase tracking-wider text-gray-400 mb-2.5">
+          <section className="mb-3.5 rounded-card border border-hair bg-vellum p-4">
+            <h2 className="label mb-3 text-ink-3">
               CKD Classification
+            </h2>
+            <div className="flex gap-1">
+              {CKD_BAR.map((s) => {
+                const current = s.check(egfr)
+                return (
+                  <div
+                    key={s.l}
+                    aria-current={current ? 'true' : undefined}
+                    className={cn(
+                      'relative flex-1 rounded-btn py-2 text-center',
+                      current ? 'bg-ink text-canvas' : 'bg-recess text-ink-3'
+                    )}
+                  >
+                    {current && <span aria-hidden className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-terra" />}
+                    <div className="num text-[15px] font-medium leading-tight">{s.l}</div>
+                    <div className="text-[9px] tabular">{s.r}</div>
+                  </div>
+                )
+              })}
             </div>
-            <div className="flex gap-1 mb-2">
-              {CKD_BAR.map((s) => (
-                <div
-                  key={s.l}
-                  className={cn(
-                    'flex-1 py-2 rounded-md text-center',
-                    s.check(egfr) ? 'bg-emerald-700 text-white' : 'bg-gray-100 text-gray-400'
-                  )}
-                >
-                  <div className="text-xs font-bold">{s.l}</div>
-                  <div className="text-[8px]">{s.r}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+          </section>
         )}
 
         {/* Findings */}
         {findings.map((f, i) => {
           const colors = TYPE_COLORS[f.type]
           return (
-            <div key={i} className="bg-white rounded-xl p-4 border border-gray-100 mb-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', colors.dot)} />
-                <span className={cn('text-[11px] uppercase tracking-wider font-semibold', colors.text)}>
+            <article key={i} className={cn('mb-3 rounded-card border border-l-2 border-hair bg-vellum p-4', colors.edge)}>
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full', colors.dot)} aria-hidden />
+                <span className={cn('label', colors.text)}>
                   {f.cat}
                 </span>
               </div>
-              <div className="text-sm font-semibold text-gray-900 mb-1.5">{f.title}</div>
+              <h3 className="mb-3 font-serif text-lg font-medium leading-snug tracking-[-.015em] text-ink">{f.title}</h3>
 
               {/* Metrics grid */}
-              <div className={cn('grid grid-cols-4 gap-1.5 mb-2.5 p-2.5 rounded-lg', colors.bg)}>
+              <div className={cn('mb-3 grid grid-cols-4 gap-1.5 rounded-btn p-2.5', colors.bg)}>
                 {f.metrics.map((m, j) => (
-                  <div key={j} className="text-center">
-                    <div className="text-[8px] text-gray-400 uppercase tracking-wider mb-0.5">{m.l}</div>
+                  <div key={j} className="min-w-0 text-center">
+                    <div className="mb-0.5 truncate text-[9px] font-bold uppercase tracking-[.06em] text-ink-3">{m.l}</div>
                     <div className={cn(
-                      'text-xs font-bold text-gray-900',
-                      typeof m.v === 'number' && 'font-mono'
+                      'break-words text-ink',
+                      typeof m.v === 'number' ? 'num text-base font-medium' : 'text-xs font-semibold'
                     )}>
                       {m.v}
                     </div>
-                    {m.u && <div className="text-[8px] text-gray-400">{m.u}</div>}
+                    {m.u && <div className="text-[9px] text-ink-3">{m.u}</div>}
                   </div>
                 ))}
               </div>
 
-              <div className="text-xs text-gray-500 leading-relaxed">{f.detail}</div>
-            </div>
+              <p className="text-[13px] leading-relaxed text-ink-2">{f.detail}</p>
+            </article>
           )
         })}
 
-        <div className="mt-2 p-3.5 bg-gray-50 rounded-lg text-[11px] text-gray-400 text-center leading-relaxed">
+        <div className="mt-4 border-t border-hair-2 pt-4 text-center font-serif text-sm italic leading-relaxed text-ink-2">
           For tracking only. Always discuss results with {profile?.doctorName || 'your transplant team'}.
         </div>
       </main>

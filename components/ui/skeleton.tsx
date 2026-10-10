@@ -5,17 +5,13 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ className }: SkeletonProps) {
-  return (
-    <div
-      className={cn('animate-pulse rounded-lg bg-gray-200', className)}
-    />
-  )
+  return <div className={cn('animate-pulse rounded-btn bg-recess', className)} />
 }
 
 export function CardSkeleton() {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
-      <Skeleton className="h-4 w-24" />
+    <div className="space-y-3 rounded-card border border-hair bg-vellum p-4">
+      <Skeleton className="h-3 w-20" />
       <Skeleton className="h-8 w-16" />
       <Skeleton className="h-3 w-32" />
     </div>
@@ -24,23 +20,24 @@ export function CardSkeleton() {
 
 export function ChartSkeleton() {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
-      <Skeleton className="h-4 w-32" />
-      <Skeleton className="h-48 w-full" />
+    <div className="space-y-3 rounded-card border border-hair bg-vellum p-4">
+      <Skeleton className="h-5 w-32" />
+      <Skeleton className="h-40 w-full" />
     </div>
   )
 }
 
+/** Mirrors the ruled records list. */
 export function ListSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="space-y-3">
+    <div className="border-t border-hair-2">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3">
-          <Skeleton className="h-10 w-10 rounded-full" />
+        <div key={i} className="flex items-baseline justify-between gap-4 border-b border-hair-2 py-4">
           <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-5 w-28" />
             <Skeleton className="h-3 w-48" />
           </div>
+          <Skeleton className="h-3 w-16" />
         </div>
       ))}
     </div>

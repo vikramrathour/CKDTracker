@@ -13,16 +13,16 @@ const SYSTEM_LABELS: Record<string, string> = {
 
 export function SystemScores({ scores }: { scores: HealthScore['systems'] }) {
   return (
-    <div className="flex gap-2 mt-4">
+    <div className="mt-5 flex gap-1 border-t border-hair pt-4">
       {Object.entries(scores).map(([key, value]) => (
         <div
           key={key}
-          className="flex-1 text-center"
+          className="flex flex-1 flex-col items-center text-center"
           title={value == null ? 'Not measured in latest report' : undefined}
         >
-          <HealthScoreRing score={value} size={44} />
+          <HealthScoreRing score={value} size={46} strokeWidth={3} />
           <div
-            className={`text-[8px] mt-1 uppercase tracking-wider ${value == null ? 'text-gray-300' : 'text-gray-400'}`}
+            className={`mt-1.5 text-[10px] font-bold uppercase tracking-[.08em] ${value == null ? 'text-ink-3/60' : 'text-ink-3'}`}
           >
             {SYSTEM_LABELS[key] || key}
           </div>
