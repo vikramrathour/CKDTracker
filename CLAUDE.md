@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-CKD Tracker: a mobile-first Next.js 14 (App Router) PWA for one kidney-transplant patient to track lab results (hemogram, kidney function, tacrolimus levels, electrolytes, lipids, urine) over time. Lab reports are mostly Metropolis Healthcare (India) PDFs. All data is personal medical data — never commit real reports (`reports/` is gitignored for this reason) and use redacted/synthetic data in fixtures. The roadmap (care-circle multi-tenant model, phone OTP, Gemini chat, visit tools, TWA) is being built in phases.
+CKD Tracker: a mobile-first Next.js 15 (App Router, React 19) PWA for one kidney-transplant patient to track lab results (hemogram, kidney function, tacrolimus levels, electrolytes, lipids, urine) over time. Lab reports are mostly Metropolis Healthcare (India) PDFs. All data is personal medical data — never commit real reports (`reports/` is gitignored for this reason) and use redacted/synthetic data in fixtures. The roadmap (care-circle multi-tenant model, phone OTP, Gemini chat, visit tools, TWA) is being built in phases.
 
 ## Commands
 
@@ -23,7 +23,7 @@ Requires Node 22+ (firebase-admin 14). Copy `.env.example` to `.env.local` and f
 
 **Routing.** `app/(auth)/login` is public. Everything under `app/(app)/` (dashboard, records, records/new, upload, trends, analysis, medications, settings) is wrapped by `components/layout/app-shell.tsx`, which does the auth gate *client-side* (redirects to `/login` when `useAuth()` has no user) and renders the bottom nav. There is no middleware or server-side session — all Firestore access happens from the browser with the signed-in user's credentials, so Firestore/Storage security rules are the real access control. They live in `firestore.rules` / `storage.rules` (owner-only on `users/{uid}/**` and `lab-pdfs/{uid}/**`; `sharedLinks` closed) — update them whenever you add a collection or storage path, and deploy with `npx firebase-tools deploy --only firestore:rules,storage`.
 
-**Data layer (`lib/firebase/`).** Thin wrappers over the modular Firebase v10 SDK. Data model:
+**Data layer (`lib/firebase/`).** Thin wrappers over the modular Firebase JS SDK (v13). Data model:
 - `users/{uid}` — profile doc
 - `users/{uid}/labRecords/{id}` — one doc per lab report; `values: LabValue[]` is embedded (not a subcollection). `recordDate`/`createdAt`/`updatedAt` are Firestore `Timestamp`s, converted to ISO strings on read — app code always sees strings.
 - `users/{uid}/medications/{id}`
