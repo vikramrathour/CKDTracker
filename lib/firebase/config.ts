@@ -1,6 +1,6 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'
-import { getAuth, type Auth } from 'firebase/auth'
-import { getFirestore, type Firestore } from 'firebase/firestore'
+import { getAuth, connectAuthEmulator, type Auth } from 'firebase/auth'
+import { getFirestore, connectFirestoreEmulator, type Firestore } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -19,14 +19,29 @@ function getApp(): FirebaseApp | undefined {
 
 const app = getApp()
 
+// Local development against `npx firebase-tools emulators:start` (ports in firebase.json).
+export const USE_EMULATORS = process.env.NEXT_PUBLIC_USE_EMULATORS === '1'
+
 export const auth: Auth | undefined = app ? getAuth(app) : undefined
 export const db: Firestore | undefined = app ? getFirestore(app) : undefined
+
+if (USE_EMULATORS && auth && db && !(globalThis as { __ckdEmulators?: boolean }).__ckdEmulators) {
+  ;(globalThis as { __ckdEmulators?: boolean }).__ckdEmulators = true
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
+  connectFirestoreEmulator(db, '127.0.0.1', 8080)
+}
 
 // Storage is lazy-loaded via dynamic import
 export async function getStorageInstance() {
   if (!app) throw new Error('Firebase not initialized')
-  const { getStorage } = await import('firebase/storage')
-  return getStorage(app)
+  const { getStorage, connectStorageEmulator } = await import('firebase/storage')
+  const storage = getStorage(app)
+  const g = globalThis as { __ckdStorageEmulator?: boolean }
+  if (USE_EMULATORS && !g.__ckdStorageEmulator) {
+    g.__ckdStorageEmulator = true
+    connectStorageEmulator(storage, '127.0.0.1', 9199)
+  }
+  return storage
 }
 
 export default app
