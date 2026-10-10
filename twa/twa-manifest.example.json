@@ -1,0 +1,41 @@
+{
+  "packageId": "com.example.ckdtracker",
+  "host": "ckd.example.com",
+  "name": "CKD Tracker",
+  "launcherName": "CKD Tracker",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#F7F6F2",
+  "themeColorDark": "#121A24",
+  "navigationColor": "#F7F6F2",
+  "navigationColorDark": "#121A24",
+  "navigationDividerColor": "#F7F6F2",
+  "navigationDividerColorDark": "#121A24",
+  "backgroundColor": "#F7F6F2",
+  "enableNotifications": true,
+  "startUrl": "/dashboard",
+  "iconUrl": "https://ckd.example.com/icons/icon-512.png",
+  "maskableIconUrl": "https://ckd.example.com/icons/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "ckdtracker"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    { "name": "Upload report", "shortName": "Upload", "url": "/upload", "chosenIconUrl": "https://ckd.example.com/icons/icon-192.png" },
+    { "name": "Chat", "shortName": "Chat", "url": "/chat", "chosenIconUrl": "https://ckd.example.com/icons/icon-192.png" },
+    { "name": "Visits", "shortName": "Visits", "url": "/visits", "chosenIconUrl": "https://ckd.example.com/icons/icon-192.png" }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://ckd.example.com/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": { "enabled": false },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "minSdkVersion": 21,
+  "fullScopeUrl": "https://ckd.example.com/"
+}

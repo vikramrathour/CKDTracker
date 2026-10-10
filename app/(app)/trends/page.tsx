@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Header } from '@/components/layout/header'
 import { TrendChart, type TrendTone } from '@/components/trends/trend-chart'
 import { useLabRecords, getTrendPoints } from '@/lib/hooks/use-lab-records'
@@ -7,66 +8,55 @@ import { ChartSkeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/utils'
 import { linearRegression } from '@/lib/calculations/trends'
 import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
+import { formatRange, resolveRange, type RecordRangeRefs, type TargetMap } from '@/lib/calculations/targets'
+import { useTargets } from '@/lib/hooks/use-targets'
+import type { LabRecord } from '@/lib/types/lab-record'
 
 const range = (testName: string) => REFERENCE_RANGES[testName]
 
+/**
+ * Key metrics. The band each chart shows is resolved per patient with
+ * resolveRange(): doctor's target > range printed on the latest report >
+ * REFERENCE_RANGES. `openHigh` hides a default/printed upper bound that isn't
+ * a clinical concern (eGFR); a target's upper bound is always shown.
+ */
 const KEY_METRICS: {
   testName: string
   label: string
   tone: TrendTone
-  refLow: number | undefined
-  refHigh: number | null
   insight: string
+  openHigh?: boolean
 }[] = [
-  {
-    testName: 'Creatinine',
-    label: 'Creatinine',
-    tone: 'terra',
-    refLow: range('Creatinine')?.min,
-    refHigh: range('Creatinine')?.max ?? null,
-    insight: 'Kidney filtration marker — lower is better within range',
-  },
-  {
-    testName: 'eGFR',
-    label: 'eGFR',
-    tone: 'sage',
-    refLow: range('eGFR')?.min,
-    refHigh: null, // no upper concern for eGFR
-    insight: 'Kidney function rate — higher is better',
-  },
-  {
-    testName: 'Tacrolimus',
-    label: 'Tacrolimus',
-    tone: 'ink',
-    refLow: range('Tacrolimus')?.min,
-    refHigh: range('Tacrolimus')?.max ?? null,
-    insight: `Immunosuppressant level — target ${range('Tacrolimus')?.min}–${range('Tacrolimus')?.max} ng/mL`,
-  },
-  {
-    testName: 'Potassium',
-    label: 'Potassium',
-    tone: 'terraDk',
-    refLow: range('Potassium')?.min,
-    refHigh: range('Potassium')?.max ?? null,
-    insight: 'Electrolyte — some transplant medications can raise it',
-  },
-  {
-    testName: 'Hemoglobin',
-    label: 'Haemoglobin',
-    tone: 'sage',
-    refLow: range('Hemoglobin')?.min,
-    refHigh: range('Hemoglobin')?.max ?? null,
-    insight: 'Oxygen-carrying capacity — stable is good',
-  },
-  {
-    testName: 'Sodium',
-    label: 'Sodium',
-    tone: 'ink2',
-    refLow: range('Sodium')?.min,
-    refHigh: range('Sodium')?.max ?? null,
-    insight: 'Fluid/electrolyte balance indicator',
-  },
+  { testName: 'Creatinine', label: 'Creatinine', tone: 'terra', insight: 'Kidney filtration marker — lower is better within range' },
+  { testName: 'eGFR', label: 'eGFR', tone: 'sage', insight: 'Kidney function rate — higher is better', openHigh: true },
+  { testName: 'Tacrolimus', label: 'Tacrolimus', tone: 'ink', insight: 'Immunosuppressant trough level' },
+  { testName: 'Potassium', label: 'Potassium', tone: 'terraDk', insight: 'Electrolyte — some transplant medications can raise it' },
+  { testName: 'Hemoglobin', label: 'Hemoglobin', tone: 'sage', insight: 'Oxygen-carrying capacity — stable is good' },
+  { testName: 'Sodium', label: 'Sodium', tone: 'ink2', insight: 'Fluid/electrolyte balance indicator' },
 ]
+
+/** Latest printed reference range for a test across records (records are oldest first). */
+function latestRefs(records: LabRecord[], testName: string): RecordRangeRefs | undefined {
+  for (let i = records.length - 1; i >= 0; i--) {
+    const v = records[i].values.find((x) => x.testName === testName)
+    if (v && (v.referenceMin != null || v.referenceMax != null)) return v
+  }
+  return undefined
+}
+
+function metricBand(records: LabRecord[], metric: (typeof KEY_METRICS)[number], targets: TargetMap) {
+  const resolved = resolveRange(metric.testName, latestRefs(records, metric.testName), targets)
+  if (!resolved) return { refLow: undefined, refHigh: null, note: '' }
+  const isTarget = resolved.source === 'target'
+  const targetMax = isTarget && targets[metric.testName]?.max != null
+  const refHigh = metric.openHigh && !targetMax ? null : resolved.max
+  const unit = range(metric.testName)?.unit ?? ''
+  const shown = { min: resolved.min, max: refHigh }
+  const note = isTarget
+    ? `Your target ${formatRange(shown)} ${unit}${resolved.target?.setBy ? ` (set by ${resolved.target.setBy})` : ''}`
+    : `${resolved.source === 'record' ? 'Lab range' : 'Reference'} ${formatRange(shown)} ${unit}`
+  return { refLow: resolved.min ?? undefined, refHigh, note: note.trim() }
+}
 
 const DAY_MS = 1000 * 60 * 60 * 24
 
@@ -96,8 +86,9 @@ function computeStats(points: { date: string; value: number }[]) {
 
 export default function TrendsPage() {
   const { records, loading } = useLabRecords()
+  const { targetMap, loading: targetsLoading } = useTargets()
 
-  if (loading) {
+  if (loading || targetsLoading) {
     return (
       <>
         <Header title="Key Trends" emphasis="Trends" />
@@ -117,19 +108,24 @@ export default function TrendsPage() {
       <main className="px-4 py-4">
         <p className="mb-4 text-[13px] text-ink-3 tabular">
           {records.length} readings · {first ? formatDate(first.recordDate, 'MMM yy') : ''} → {last ? formatDate(last.recordDate, 'MMM yy') : ''}
+          {' · '}
+          <Link href="/targets" className="tlink font-semibold">
+            {Object.keys(targetMap).length > 0 ? 'Edit targets' : 'Set targets'}
+          </Link>
         </p>
         {KEY_METRICS.map((metric) => {
           const points = getTrendPoints(records, metric.testName)
           const stats = computeStats(points)
+          const band = metricBand(records, metric, targetMap)
           return (
             <TrendChart
               key={metric.testName}
               label={metric.label}
-              insight={metric.insight}
+              insight={band.note ? `${metric.insight}. ${band.note}` : metric.insight}
               tone={metric.tone}
               points={points}
-              refLow={metric.refLow}
-              refHigh={metric.refHigh}
+              refLow={band.refLow}
+              refHigh={band.refHigh}
               stats={stats}
               higherIsBetter={!!range(metric.testName)?.higherIsBetter}
             />

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Newsreader, Plus_Jakarta_Sans } from 'next/font/google'
 import { AuthProvider } from '@/components/providers/auth-provider'
 import { ToastProvider } from '@/components/providers/toast-provider'
+import { PwaBridge } from '@/components/notifications/pwa-bridge'
 import './globals.css'
 
 const serif = Newsreader({
@@ -19,6 +20,8 @@ const sans = Plus_Jakarta_Sans({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
+  applicationName: 'CKD Tracker',
   title: 'CKD Tracker',
   description: 'Kidney health tracking and analytics for transplant patients',
   icons: {
@@ -61,6 +64,7 @@ export default function RootLayout({
       <body>
         <AuthProvider>
           <ToastProvider>
+            <PwaBridge />
             {children}
           </ToastProvider>
         </AuthProvider>

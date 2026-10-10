@@ -47,11 +47,57 @@ export function formatPhoneForDisplay(e164: string | null | undefined): string {
   return parsed.formatInternational()
 }
 
-/** Mask all but the last 4 digits, e.g. for "code sent to +91 ••••• •0001". */
-export function maskPhone(e164: string | null | undefined): string {
+/**
+ * True when a "name" is really a phone number, full or masked
+ * ("+919999900001", "+91 99999 00001", "+91 ••••• •••01"). Older member and
+ * activity docs stored the caller's number as their name.
+ */
+export function isPhoneLike(name: string | null | undefined): boolean {
+  const s = (name ?? '').trim()
+  return /^[+\d\s().\-•]+$/.test(s) && (s.match(/\d/g)?.length ?? 0) >= 2
+}
+
+/** "Member ••01" from a full or masked number; 'Someone' with no digits to show. */
+export function memberLabel(phone: string | null | undefined): string {
+  const digits = (phone ?? '').replace(/\D/g, '')
+  return digits.length >= 2 ? `Member ••${digits.slice(-2)}` : 'Someone'
+}
+
+/**
+ * The name to store or show for a person. A full phone number is never a
+ * name: first real name of `fullName` (profile) → `displayName` (auth),
+ * else "Member ••01" from the phone, else 'Someone'.
+ */
+export function pickPersonName(p: {
+  fullName?: string | null
+  displayName?: string | null
+  phone?: string | null
+}): string {
+  for (const candidate of [p.fullName, p.displayName]) {
+    const name = (candidate ?? '').trim().replace(/\s+/g, ' ')
+    if (name && !isPhoneLike(name)) return name.slice(0, 100)
+  }
+  return memberLabel(p.phone)
+}
+
+/**
+ * Render a stored person name. Legacy names that are just a phone number
+ * become "Member ••01" so a full number is never shown as a name.
+ */
+export function formatPersonName(name: string | null | undefined): string {
+  const s = (name ?? '').trim()
+  if (!s) return 'Someone'
+  return isPhoneLike(s) ? memberLabel(s) : s
+}
+
+/**
+ * Mask all but the last `keep` digits (default 4), e.g. for "code sent to
+ * +91 ••••• •0001". Member docs store maskPhone(e164, 2): '+91 ••••• •••01'.
+ */
+export function maskPhone(e164: string | null | undefined, keep = 4): string {
   const display = formatPhoneForDisplay(e164)
   if (!display) return ''
-  let toKeep = 4
+  let toKeep = keep
   const chars = display.split('')
   for (let i = chars.length - 1; i >= 0; i--) {
     if (!/\d/.test(chars[i])) continue

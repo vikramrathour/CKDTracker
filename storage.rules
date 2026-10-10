@@ -16,20 +16,32 @@ service firebase.storage {
       return request.auth != null && firestore.exists(memberDoc(pid));
     }
 
+    // get() of a missing member doc errors, which denies: no separate exists().
     function isEditor(pid) {
-      return isMember(pid) && firestore.get(memberDoc(pid)).data.role in ['owner', 'editor'];
+      return request.auth != null && firestore.get(memberDoc(pid)).data.role in ['owner', 'editor'];
+    }
+
+    function documentMeta(pid, docId) {
+      return firestore.get(/databases/(default)/documents/patients/$(pid)/documents/$(docId)).data;
     }
 
     // Document vault: patients/{pid}/documents/{docId}/{fileName}
-    // Metadata lives in Firestore at patients/{pid}/documents/{docId}.
+    // Metadata lives in Firestore at patients/{pid}/documents/{docId} and is
+    // written FIRST (lib/firebase/storage.ts): an upload is only accepted at
+    // exactly the path, and with exactly the content type, it declares, so no
+    // object can exist without its metadata.
     match /patients/{pid}/documents/{docId}/{fileName} {
       allow read: if isMember(pid);
       // `resource == null`: never overwrite an existing object (some runtimes
       // evaluate an overwrite as create rather than update).
+      // Exact content types only: no parameters ('application/pdf; x=1'), no
+      // SVG/HTML or anything else a browser could render as active content.
       allow create: if isEditor(pid)
         && resource == null
         && request.resource.size < 20 * 1024 * 1024
-        && request.resource.contentType.matches('application/pdf|image/(jpeg|png|webp|heic)');
+        && request.resource.contentType in ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic']
+        && documentMeta(pid, docId).storagePath == 'patients/' + pid + '/documents/' + docId + '/' + fileName
+        && documentMeta(pid, docId).contentType == request.resource.contentType;
       // Files are immutable: upload a new document instead of overwriting.
       allow update: if false;
       allow delete: if isEditor(pid);

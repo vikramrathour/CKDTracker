@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { extractReportDate, parseDateString, toIsoDate } from '@/lib/parsing/date'
+import { formatYmd, humanizeYmdDates } from '@/lib/utils'
 
 describe('toIsoDate', () => {
   it('formats a valid date with zero padding', () => {
@@ -197,5 +198,18 @@ describe('extractReportDate', () => {
 
   it('handles CRLF line endings', () => {
     expect(extractReportDate('Patient: Test\r\nCollection Date : 11/09/2024\r\n')).toBe('2024-09-11')
+  })
+})
+
+describe('activity summary dates', () => {
+  it('formats YYYY-MM-DD without a timezone shift', () => {
+    expect(formatYmd('2026-08-12')).toBe('12 Aug 2026')
+    expect(formatYmd('2026-01-01')).toBe('1 Jan 2026')
+    expect(formatYmd('not a date')).toBe('not a date')
+    expect(formatYmd('2026-13-01')).toBe('2026-13-01')
+  })
+  it('rewrites dates inside summaries and leaves other text alone', () => {
+    expect(humanizeYmdDates('Added a visit for 2026-08-12')).toBe('Added a visit for 12 Aug 2026')
+    expect(humanizeYmdDates('Added Tacrolimus')).toBe('Added Tacrolimus')
   })
 })

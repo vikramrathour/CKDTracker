@@ -206,16 +206,21 @@ export type ActivityAction =
   | 'member.role-changed'
   | 'member.removed'
   | 'member.left'
+  | 'member.invited'
+  | 'invite.revoked'
   | 'record.added'
   | 'record.updated'
   | 'record.deleted'
   | 'medication.added'
   | 'medication.updated'
   | 'medication.deleted'
+  | 'medication.stopped'
   | 'document.uploaded'
   | 'visit.added'
   | 'question.added'
   | 'target.updated'
+  | 'target.removed'
+  | 'vital.added'
 
 export interface ActivityEntry {
   id: string

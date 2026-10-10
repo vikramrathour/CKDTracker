@@ -19,6 +19,7 @@ import { currentUid, getDb, toIso } from './firestore'
 import type { Patient, PatientInput } from '@/lib/types/patient'
 import type { Member, PatientMembership, Role } from '@/lib/types/member'
 import type { ActivityAction, Target } from '@/lib/types/care'
+import { maskPhone, pickPersonName } from '@/lib/phone'
 
 /**
  * Patients and care-circle membership.
@@ -61,6 +62,7 @@ export function patientFromDoc(id: string, data: DocumentData): Patient {
     transplantDate: toDateOnly(data.transplantDate),
     doctorName: str(data.doctorName) ?? '',
     hospital: str(data.hospital) ?? '',
+    nextLabDate: toDateOnly(data.nextLabDate),
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
     migratedAt: toIso(data.migratedAt),
@@ -87,12 +89,27 @@ function cleanPatientInput(input: Partial<PatientInput>): Record<string, unknown
   if (input.transplantDate !== undefined) out.transplantDate = input.transplantDate || null
   if (input.doctorName !== undefined) out.doctorName = input.doctorName.trim().slice(0, 120)
   if (input.hospital !== undefined) out.hospital = input.hospital.trim().slice(0, 160)
+  if (input.nextLabDate !== undefined) out.nextLabDate = input.nextLabDate || null
   return out
 }
 
-function myDisplayName(): string {
+/**
+ * The caller's name for docs other members see: users/{uid}.fullName → auth
+ * displayName → "Member ••01" → 'Someone'. Never a full phone number.
+ */
+export async function resolveMyName(): Promise<string> {
   const u = auth?.currentUser
-  return (u?.displayName || u?.phoneNumber || u?.email || 'Me').slice(0, 100)
+  let fullName = ''
+  if (u) {
+    try {
+      const snap = await getDoc(doc(getDb(), 'users', u.uid))
+      const v = snap.exists() ? snap.data().fullName : ''
+      fullName = typeof v === 'string' ? v : ''
+    } catch {
+      // Profile unreadable (offline): fall back to the auth account.
+    }
+  }
+  return pickPersonName({ fullName, displayName: u?.displayName, phone: u?.phoneNumber })
 }
 
 // ---- Patients ----
@@ -107,6 +124,7 @@ export async function createPatient(input: PatientInput, opts: { self: boolean }
   const uid = currentUid()
   const db = getDb()
   const pid = opts.self ? uid : newCarePid(uid)
+  const myName = await resolveMyName()
 
   const batch = writeBatch(db)
   batch.set(doc(db, 'patients', pid), {
@@ -118,8 +136,9 @@ export async function createPatient(input: PatientInput, opts: { self: boolean }
   batch.set(doc(db, 'patients', pid, 'members', uid), {
     uid,
     role: 'owner',
-    displayName: myDisplayName(),
-    phone: auth?.currentUser?.phoneNumber ?? null,
+    displayName: myName,
+    // Masked: every member of the circle can read member docs (firestore.rules).
+    phone: auth?.currentUser?.phoneNumber ? maskPhone(auth.currentUser.phoneNumber, 2) : null,
     addedBy: uid,
     addedAt: serverTimestamp(),
   })
@@ -211,13 +230,6 @@ export async function removeMember(pid: string, memberUid: string): Promise<void
   await logActivity(pid, 'member.removed', { targetType: 'member', targetId: memberUid })
 }
 
-/** Leave a care circle. Logged first (best-effort), since access ends on delete. */
-export async function leavePatient(pid: string): Promise<void> {
-  const uid = currentUid()
-  await logActivity(pid, 'member.left', { targetType: 'member', targetId: uid })
-  await deleteDoc(doc(getDb(), 'patients', pid, 'members', uid))
-}
-
 // ---- Targets (patients/{pid}/targets/{testName}) ----
 
 export async function setTarget(
@@ -239,9 +251,28 @@ export async function setTarget(
 
 // ---- Activity (append-only) ----
 
+/** The caller's displayName on this patient's member doc (what the circle sees), cached. */
+const memberNames = new Map<string, string | null>()
+
+/** Drop cached member names (after the caller renames themselves). */
+export function forgetMemberNames(): void {
+  memberNames.clear()
+}
+
+async function myMemberName(pid: string, uid: string): Promise<string | null> {
+  const key = `${pid}/${uid}`
+  if (memberNames.has(key)) return memberNames.get(key) ?? null
+  const snap = await getDoc(doc(getDb(), 'patients', pid, 'members', uid))
+  const name = snap.exists() && typeof snap.data().displayName === 'string' ? (snap.data().displayName as string) : null
+  memberNames.set(key, name)
+  return name
+}
+
 /**
  * Append an audit entry. Best-effort: never throws (viewers can't write
  * activity, and a failed log shouldn't fail the action it describes).
+ * The rules require actorName to equal the member doc's displayName (no
+ * spoofed names), so it is read from there, or left out when unknown.
  */
 export async function logActivity(
   pid: string,
@@ -249,13 +280,17 @@ export async function logActivity(
   extra: { targetType?: string; targetId?: string; summary?: string } = {}
 ): Promise<void> {
   try {
+    const uid = currentUid()
+    const actorName = await myMemberName(pid, uid).catch(() => null)
     const entry: Record<string, unknown> = {
-      actorUid: currentUid(),
-      actorName: myDisplayName(),
+      actorUid: uid,
       action,
       createdAt: serverTimestamp(),
     }
-    for (const [k, v] of Object.entries(extra)) if (v !== undefined) entry[k] = v
+    if (actorName) entry.actorName = actorName
+    if (extra.targetType !== undefined) entry.targetType = extra.targetType.slice(0, 40)
+    if (extra.targetId !== undefined) entry.targetId = extra.targetId.slice(0, 200)
+    if (extra.summary !== undefined) entry.summary = extra.summary.slice(0, 200)
     await addDoc(collection(getDb(), 'patients', pid, 'activity'), entry)
   } catch (err) {
     console.warn(`Activity log skipped (${action})`, err)

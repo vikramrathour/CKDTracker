@@ -1,14 +1,17 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Header, primaryIconButton } from '@/components/layout/header'
+import { Header, iconButton, primaryIconButton } from '@/components/layout/header'
 import { useLabRecords } from '@/lib/hooks/use-lab-records'
 import { usePatient, useCanEdit } from '@/components/providers/patient-provider'
 import { deleteLabRecord } from '@/lib/firebase/firestore'
 import { Badge } from '@/components/ui/badge'
 import { ListSkeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/utils'
-import { Plus } from 'lucide-react'
+import { valueStatus } from '@/lib/calculations/targets'
+import { useTargets } from '@/lib/hooks/use-targets'
+import { Plus, Printer } from 'lucide-react'
 import { useState } from 'react'
 
 export default function RecordsPage() {
@@ -16,6 +19,7 @@ export default function RecordsPage() {
   const { pid } = usePatient()
   const canEdit = useCanEdit()
   const { records, loading, error } = useLabRecords()
+  const { targetMap } = useTargets()
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const handleDelete = async (id: string) => {
@@ -47,16 +51,26 @@ export default function RecordsPage() {
         title="Test History"
         emphasis="History"
         actions={
-          canEdit ? (
+          <>
             <button
               type="button"
-              onClick={() => router.push('/records/new')}
-              aria-label="Add record"
-              className={primaryIconButton}
+              onClick={() => router.push('/records/print')}
+              aria-label="Print or export history"
+              className={iconButton}
             >
-              <Plus className="h-5 w-5" />
+              <Printer className="h-5 w-5" />
             </button>
-          ) : undefined
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => router.push('/records/new')}
+                aria-label="Add record"
+                className={primaryIconButton}
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+            )}
+          </>
         }
       />
       <main className="px-4 py-4">
@@ -71,7 +85,7 @@ export default function RecordsPage() {
         ) : (
           <ul className="border-t border-hair-2">
             {[...records].reverse().map((record) => {
-              const abnormals = record.values.filter((v) => v.isAbnormal)
+              const abnormals = record.values.filter((v) => valueStatus(v.testName, v.value, v, targetMap) !== 'good')
               const cr = record.values.find((v) => v.testName === 'Creatinine')
               const egfr = record.values.find((v) => v.testName === 'eGFR')
               const tac = record.values.find((v) => v.testName === 'Tacrolimus')
@@ -86,11 +100,17 @@ export default function RecordsPage() {
               ].filter(Boolean) as { l: string; v: number }[]
 
               return (
-                <li key={record.id} className="border-b border-hair-2 py-4">
+                <li key={record.id} id={`rec-${record.id}`} className="relative border-b border-hair-2 py-4 transition-colors hover:bg-wash/60">
                   <div className="flex items-center gap-3">
                     <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                       <h3 className="font-serif text-[1.375rem] font-normal leading-tight tracking-[-.015em] text-ink tabular">
-                        {formatDate(record.recordDate, 'dd MMM yy')}
+                        <Link
+                          href={`/records/${record.id}`}
+                          className="after:absolute after:inset-0 after:content-['']"
+                          aria-label={`Open the ${formatDate(record.recordDate, 'd MMM yyyy')} record`}
+                        >
+                          {formatDate(record.recordDate, 'dd MMM yy')}
+                        </Link>
                       </h3>
                       <span className="truncate text-right text-[13px] text-ink-3">
                         {record.labName || '—'} · {record.values.length} tests
@@ -102,7 +122,7 @@ export default function RecordsPage() {
                         onClick={() => handleDelete(record.id)}
                         disabled={deleting === record.id}
                         aria-label="Delete record"
-                        className="-mr-2 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-btn text-lg leading-none text-ink-3 transition-colors hover:bg-critical-pale hover:text-critical disabled:opacity-50"
+                        className="relative z-10 -mr-2 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-btn text-lg leading-none text-ink-3 transition-colors hover:bg-critical-pale hover:text-critical disabled:opacity-50"
                       >
                         {deleting === record.id ? '...' : '×'}
                       </button>

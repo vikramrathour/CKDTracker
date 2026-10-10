@@ -38,11 +38,17 @@ export async function requireMember(
   minRole: Role = 'viewer'
 ): Promise<{ user: DecodedIdToken; role: Role }> {
   const user = await requireUser(req)
+  const role = await requireRole(user, pid, minRole)
+  return { user, role }
+}
+
+/** requireMember() for an already-verified user (e.g. auth checked before reading the body). */
+export async function requireRole(user: DecodedIdToken, pid: string, minRole: Role = 'viewer'): Promise<Role> {
   if (!pid || typeof pid !== 'string' || pid.includes('/')) throw new HttpError(400, 'Invalid patient id')
   const snap = await getAdminDb().doc(`patients/${pid}/members/${user.uid}`).get()
   const role = snap.exists ? (snap.get('role') as Role) : null
   if (!role || !roleAtLeast(role, minRole)) throw new HttpError(403, 'Not allowed for this patient')
-  return { user, role }
+  return role
 }
 
 /** Map an error to a JSON response; non-HttpErrors become a generic 500. */

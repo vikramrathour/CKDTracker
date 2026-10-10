@@ -22,6 +22,8 @@ export interface Patient {
   transplantDate?: string | null
   doctorName?: string
   hospital?: string
+  /** YYYY-MM-DD; drives the "lab test tomorrow" reminder (lib/server/notifications). */
+  nextLabDate?: string | null
   createdAt?: string
   updatedAt?: string
   /** Set when the doc was created by scripts/migrate-to-patients.ts. */
@@ -31,5 +33,5 @@ export interface Patient {
 /** Fields a client may set on create/update (mirrors `patientEditable()` in firestore.rules). */
 export type PatientInput = Pick<
   Patient,
-  'displayName' | 'relationship' | 'dateOfBirth' | 'transplantDate' | 'doctorName' | 'hospital'
+  'displayName' | 'relationship' | 'dateOfBirth' | 'transplantDate' | 'doctorName' | 'hospital' | 'nextLabDate'
 >

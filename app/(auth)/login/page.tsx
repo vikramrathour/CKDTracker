@@ -252,6 +252,11 @@ export default function LoginPage() {
         We never store passwords. Sign-in uses one-time codes.
       </p>
 
+      <p className="mt-4 flex gap-4 text-[13px]">
+        <a href="/privacy" className="tlink">Privacy policy</a>
+        <a href="/terms" className="tlink">Terms</a>
+      </p>
+
       {/* Invisible reCAPTCHA renders here; mounted once for the page's lifetime. */}
       <div id={RECAPTCHA_CONTAINER_ID} />
     </div>

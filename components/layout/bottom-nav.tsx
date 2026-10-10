@@ -1,20 +1,28 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, TrendingUp, FlaskConical, FileText, Pill } from 'lucide-react'
+import { LayoutDashboard, FileText, MessageCircle, CalendarClock, LayoutGrid } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MORE_ROUTES } from './more-routes'
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/trends', label: 'Trends', icon: TrendingUp },
-  { href: '/analysis', label: 'Analysis', icon: FlaskConical },
-  { href: '/records', label: 'Records', icon: FileText },
-  { href: '/medications', label: 'Meds', icon: Pill },
+  { href: '/dashboard', label: 'Home', icon: LayoutDashboard, match: ['/dashboard'] },
+  { href: '/records', label: 'Records', icon: FileText, match: ['/records', '/upload'] },
+  { href: '/chat', label: 'Chat', icon: MessageCircle, match: ['/chat'] },
+  { href: '/visits', label: 'Visits', icon: CalendarClock, match: ['/visits', '/questions'] },
+  { href: '/more', label: 'More', icon: LayoutGrid, match: ['/more', ...MORE_ROUTES.map((r) => r.href)] },
 ]
+
+function isActivePath(pathname: string, prefixes: string[]) {
+  return prefixes.some((p) => pathname === p || pathname.startsWith(p + '/'))
+}
 
 export function BottomNav() {
   const pathname = usePathname()
   const router = useRouter()
+  // First match wins, so a route listed under two tabs (e.g. /questions under
+  // Visits and in the More list) only lights up one of them.
+  const activeHref = navItems.find((item) => isActivePath(pathname, item.match))?.href
 
   return (
     <nav
@@ -24,7 +32,7 @@ export function BottomNav() {
       <div className="mx-auto flex h-16 max-w-lg items-stretch justify-around px-2">
         {navItems.map((item) => {
           const Icon = item.icon
-          const isActive = pathname.startsWith(item.href)
+          const isActive = item.href === activeHref
 
           return (
             <button

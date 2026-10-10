@@ -8,6 +8,14 @@ import { QuickStats } from '@/components/dashboard/quick-stats'
 import { PanelOverview } from '@/components/dashboard/panel-overview'
 import { useLabRecords, getTrendPoints, getValueFromRecord } from '@/lib/hooks/use-lab-records'
 import { computeHealthScore } from '@/lib/calculations/health-score'
+import { resolveRange, valueStatus } from '@/lib/calculations/targets'
+import { useTargets } from '@/lib/hooks/use-targets'
+import { AlertsBanner } from '@/components/alerts/alerts-banner'
+import { PendingInvitesBanner } from '@/components/care-circle/incoming-invites'
+import { UpcomingVisitCard } from '@/components/visits/visit-card'
+import { useVisits } from '@/components/visits/hooks'
+import { splitVisits } from '@/lib/visits/types'
+import { VitalsQuickEntry } from '@/components/vitals/vitals-quick-entry'
 import { CardSkeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { interactiveCard } from '@/components/ui/card'
@@ -33,6 +41,9 @@ export default function DashboardPage() {
   const { pid, activePatient, patients } = usePatient()
   const canEdit = useCanEdit()
   const { records, loading } = useLabRecords()
+  const { targetMap } = useTargets()
+  const { visits } = useVisits()
+  const nextVisit = splitVisits(visits).upcoming[0]
   const [demoLoading, setDemoLoading] = useState(false)
   const [demoError, setDemoError] = useState<string | null>(null)
   const demoInFlight = useRef(false)
@@ -125,7 +136,7 @@ export default function DashboardPage() {
 
   const latestRecord = records[records.length - 1]
   const previousRecord = records.length > 1 ? records[records.length - 2] : undefined
-  const healthScore = computeHealthScore(latestRecord.values)
+  const healthScore = computeHealthScore(latestRecord.values, targetMap)
 
   // Determine trajectory from eGFR trend
   const egfrPoints = getTrendPoints(records, 'eGFR')
@@ -138,10 +149,9 @@ export default function DashboardPage() {
   }
 
   // Find alerts from latest record
-  const alerts = latestRecord.values.filter((v) => {
-    if (v.referenceMin === undefined || v.referenceMax === undefined) return false
-    return v.value < v.referenceMin || v.value > v.referenceMax
-  })
+  const alerts = latestRecord.values
+    .filter((v) => valueStatus(v.testName, v.value, v, targetMap) === 'danger')
+    .map((v) => ({ v, range: resolveRange(v.testName, v, targetMap) }))
 
   return (
     <>
@@ -163,6 +173,10 @@ export default function DashboardPage() {
         }
       />
       <main className="space-y-4 px-4 py-4">
+        <PendingInvitesBanner />
+        <AlertsBanner />
+        {nextVisit && <UpcomingVisitCard visit={nextVisit} />}
+
         {/* Health Score — tap to view analysis */}
         <div
           onClick={() => router.push('/analysis')}
@@ -193,6 +207,7 @@ export default function DashboardPage() {
               current={getValueFromRecord(latestRecord, test.testName)}
               previous={previousRecord ? getValueFromRecord(previousRecord, test.testName) : undefined}
               trendPoints={getTrendPoints(records, test.testName)}
+              targetMap={targetMap}
             />
           ))}
         </div>
@@ -200,7 +215,7 @@ export default function DashboardPage() {
         {/* Alerts */}
         {alerts.length > 0 && (
           <div className="space-y-2">
-            {alerts.map((v) => (
+            {alerts.map(({ v, range }) => (
               <div
                 key={v.testName}
                 role="status"
@@ -212,9 +227,7 @@ export default function DashboardPage() {
                     {v.testName}: {v.value} {v.unit}
                   </div>
                   <div className="mt-0.5 text-[13px] text-ink-2 tabular">
-                    {v.value < (v.referenceMin ?? 0)
-                      ? `Below normal range (${v.referenceMin}–${v.referenceMax})`
-                      : `Above normal range (${v.referenceMin}–${v.referenceMax})`}
+                    {`${range && range.min != null && v.value < range.min ? 'Below' : 'Above'} ${range?.source === 'target' ? 'your target' : 'normal range'} (${range?.min ?? '—'}–${range?.max ?? '—'})`}
                   </div>
                 </div>
               </div>
@@ -223,7 +236,9 @@ export default function DashboardPage() {
         )}
 
         {/* Panel Overview */}
-        <PanelOverview records={records} latestRecord={latestRecord} />
+        <VitalsQuickEntry />
+
+        <PanelOverview records={records} latestRecord={latestRecord} targetMap={targetMap} />
 
         {patients.length === 1 && (
           <p className="pt-2 text-center">

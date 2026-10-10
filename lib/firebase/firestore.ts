@@ -16,7 +16,6 @@ import {
 } from 'firebase/firestore'
 import { auth, db as _db } from './config'
 import type { LabRecord, LabValue } from '@/lib/types/lab-record'
-import type { Medication } from '@/lib/types/medication'
 
 /**
  * Patient-scoped data access. Every clinical collection lives under
@@ -107,7 +106,7 @@ export async function addLabRecord(
 ): Promise<string> {
   const docRef = await addDoc(patientCol(pid, 'labRecords'), {
     recordDate: Timestamp.fromDate(record.recordDate),
-    labName: record.labName,
+    labName: record.labName.slice(0, 120),
     doctorName: record.doctorName || '',
     notes: record.notes || '',
     pdfPath: record.pdfPath || null,
@@ -133,7 +132,7 @@ export async function updateLabRecord(
 ): Promise<void> {
   const updateData: Record<string, unknown> = { updatedAt: serverTimestamp() }
   if (data.recordDate) updateData.recordDate = Timestamp.fromDate(data.recordDate)
-  if (data.labName !== undefined) updateData.labName = data.labName
+  if (data.labName !== undefined) updateData.labName = data.labName.slice(0, 120)
   if (data.doctorName !== undefined) updateData.doctorName = data.doctorName
   if (data.notes !== undefined) updateData.notes = data.notes
   if (data.pdfPath !== undefined) updateData.pdfPath = data.pdfPath
@@ -144,54 +143,6 @@ export async function updateLabRecord(
 
 export async function deleteLabRecord(pid: string, recordId: string): Promise<void> {
   await deleteDoc(patientDoc(pid, 'labRecords', recordId))
-}
-
-// ---- Medications ----
-
-export async function getMedications(pid: string): Promise<Medication[]> {
-  const q = query(patientCol(pid, 'medications'), orderBy('createdAt', 'asc'))
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map((d) => ({
-    ...d.data(),
-    id: d.id,
-    createdAt: toIso(d.data().createdAt),
-  })) as Medication[]
-}
-
-export async function addMedication(
-  pid: string,
-  med: Omit<Medication, 'id' | 'createdAt' | 'createdBy'>
-): Promise<string> {
-  const docRef = await addDoc(patientCol(pid, 'medications'), {
-    ...med,
-    createdBy: currentUid(),
-    createdAt: serverTimestamp(),
-  })
-  return docRef.id
-}
-
-export async function updateMedication(
-  pid: string,
-  medId: string,
-  data: Partial<Omit<Medication, 'id' | 'createdAt' | 'createdBy'>>
-): Promise<void> {
-  await updateDoc(patientDoc(pid, 'medications', medId), data)
-}
-
-export async function deleteMedication(pid: string, medId: string): Promise<void> {
-  await deleteDoc(patientDoc(pid, 'medications', medId))
-}
-
-// ---- Shared Links ----
-
-export async function getSharedLinkByToken(token: string) {
-  const q = query(collection(getDb(), 'sharedLinks'))
-  const snapshot = await getDocs(q)
-  const link = snapshot.docs.find((d) => d.data().token === token && d.data().isActive)
-  if (!link) return null
-  const data = link.data()
-  if (data.expiresAt && (data.expiresAt as Timestamp).toDate() < new Date()) return null
-  return { id: link.id, ...data }
 }
 
 // ---- User Profile (users/{uid}: account-level, not the patient) ----

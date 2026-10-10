@@ -4,6 +4,9 @@ import { useAuth } from '@/components/providers/auth-provider'
 import { ONBOARDING_PATH, PatientProvider, usePatient } from '@/components/providers/patient-provider'
 import { Button } from '@/components/ui/button'
 import { BottomNav } from './bottom-nav'
+import { ScrollToTop } from './scroll-to-top'
+import { OfflineIndicator } from '@/components/notifications/offline-indicator'
+import { PendingInviteRedeemer } from '@/components/care-circle/pending-invite-redeemer'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
@@ -44,6 +47,8 @@ function PatientGate({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="relative mx-auto min-h-screen max-w-lg bg-canvas">
+      <ScrollToTop />
+      <OfflineIndicator />
       {children}
       {showNav && (
         <>
@@ -72,6 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <PatientProvider>
+      <PendingInviteRedeemer />
       <PatientGate>{children}</PatientGate>
     </PatientProvider>
   )

@@ -1,6 +1,7 @@
 'use client'
 
-import { cn, getLabValueStatus, formatValue } from '@/lib/utils'
+import { cn, formatValue } from '@/lib/utils'
+import { valueStatus, type TargetMap } from '@/lib/calculations/targets'
 import { Sparkline } from '@/components/records/sparkline'
 import { STATUS_STYLES, statusColor, useThemeColors, type Status, type ThemeColors } from '@/components/ui/status'
 import { getTrendPoints } from '@/lib/hooks/use-lab-records'
@@ -20,12 +21,14 @@ function LabValueRow({
   val,
   trendPoints,
   colors,
+  targetMap,
 }: {
+  targetMap?: TargetMap
   val: LabValue
   trendPoints: { date: string; value: number }[]
   colors: ThemeColors
 }) {
-  const status = getLabValueStatus(val)
+  const status = valueStatus(val.testName, val.value, val, targetMap)
 
   return (
     <div className="flex min-h-[44px] items-center gap-3 border-t border-hair py-2 first:border-t-0">
@@ -49,9 +52,10 @@ function LabValueRow({
 interface PanelOverviewProps {
   records: LabRecord[]
   latestRecord: LabRecord
+  targetMap?: TargetMap
 }
 
-export function PanelOverview({ records, latestRecord }: PanelOverviewProps) {
+export function PanelOverview({ records, latestRecord, targetMap }: PanelOverviewProps) {
   const colors = useThemeColors()
 
   return (
@@ -70,6 +74,7 @@ export function PanelOverview({ records, latestRecord }: PanelOverviewProps) {
                 key={val.testName}
                 val={val}
                 colors={colors}
+                targetMap={targetMap}
                 trendPoints={getTrendPoints(records, val.testName)}
               />
             ))}

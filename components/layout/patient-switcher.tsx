@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, ChevronDown, UserPlus } from 'lucide-react'
+import { Check, ChevronDown, UserPlus, UserRound } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -79,17 +79,30 @@ export function PatientSwitcher({ className }: { className?: string }) {
             )
           })}
         </ul>
-        <Button
-          variant="secondary"
-          className="mt-4 w-full"
-          onClick={() => {
-            setOpen(false)
-            router.push('/onboarding')
-          }}
-        >
-          <UserPlus className="h-4 w-4" aria-hidden />
-          Add someone
-        </Button>
+        <div className="mt-4 flex gap-2">
+          <Button
+            variant="ghost"
+            className="flex-1"
+            onClick={() => {
+              setOpen(false)
+              router.push('/patient')
+            }}
+          >
+            <UserRound className="h-4 w-4" aria-hidden />
+            Profile details
+          </Button>
+          <Button
+            variant="secondary"
+            className="flex-1"
+            onClick={() => {
+              setOpen(false)
+              router.push('/onboarding')
+            }}
+          >
+            <UserPlus className="h-4 w-4" aria-hidden />
+            Add someone
+          </Button>
+        </div>
       </Modal>
     </>
   )

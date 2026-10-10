@@ -9,6 +9,7 @@ import { usePatient, useCanEdit } from '@/components/providers/patient-provider'
 import { ViewOnlyNotice } from '@/components/shared/view-only-notice'
 import { useLabRecords } from '@/lib/hooks/use-lab-records'
 import { addLabRecord } from '@/lib/firebase/firestore'
+import { notifyRecordAdded } from '@/lib/firebase/messaging'
 import { PANELS } from '@/lib/constants/test-panels'
 import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
 import type { LabValue, Panel } from '@/lib/types/lab-record'
@@ -72,11 +73,12 @@ export default function NewRecordPage() {
         return
       }
 
-      await addLabRecord(pid, {
+      const recordId = await addLabRecord(pid, {
         recordDate: new Date(date),
         labName: lab,
         values: labValues,
       })
+      notifyRecordAdded(pid, recordId)
 
       router.push('/records')
     } catch (err) {

@@ -9,8 +9,12 @@ import { Chip } from '@/components/ui/tabs'
 import { useAuth } from '@/components/providers/auth-provider'
 import { usePatient } from '@/components/providers/patient-provider'
 import { createPatient, setTarget } from '@/lib/firebase/patients'
+import { saveMyFullName } from '@/lib/firebase/auth'
+import { setMyName } from '@/lib/firebase/invites'
+import { isPhoneLike } from '@/lib/phone'
 import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
 import { cn } from '@/lib/utils'
+import { IncomingInvites, usePendingInvites } from '@/components/care-circle/incoming-invites'
 import type { PatientRelationship } from '@/lib/types/patient'
 
 type Who = 'self' | 'other'
@@ -29,14 +33,20 @@ export default function OnboardingPage() {
   // pid == uid is your own profile; once it exists you can only add others.
   const hasOwnProfile = patients.some((p) => p.id === user?.uid)
   const isFirstProfile = patients.length === 0
+  // Invites sent to this phone number come first: most invitees don't need a profile of their own.
+  const { invites: pendingInvites, reload: reloadInvites } = usePendingInvites()
+  const hasInvites = pendingInvites.length > 0
 
   const [who, setWho] = useState<Who>(hasOwnProfile ? 'other' : 'self')
   const [name, setName] = useState(hasOwnProfile ? '' : user?.displayName ?? '')
+  // Your own name, for the care circle (asked separately when the profile is someone else's).
+  const [myName, setMyNameInput] = useState(user?.displayName && !isPhoneLike(user.displayName) ? user.displayName : '')
   const [relationship, setRelationship] = useState<Exclude<PatientRelationship, 'self'>>('family')
   const [dateOfBirth, setDateOfBirth] = useState('')
   const [transplantDate, setTransplantDate] = useState('')
   const [doctorName, setDoctorName] = useState('')
   const [hospital, setHospital] = useState('')
+  const [nextLabDate, setNextLabDate] = useState('')
   const [tacMin, setTacMin] = useState('')
   const [tacMax, setTacMax] = useState('')
   const [saving, setSaving] = useState<null | 'upload' | 'dashboard'>(null)
@@ -51,10 +61,13 @@ export default function OnboardingPage() {
 
   function validate(): string | null {
     if (!name.trim()) return who === 'self' ? 'Please enter your name.' : 'Please enter their name.'
+    if (who === 'self' && isPhoneLike(name)) return 'Please enter a name, not a phone number.'
+    if (who === 'other' && myName.trim() && isPhoneLike(myName)) return 'Your name can’t be a phone number.'
     const max = today()
     if (dateOfBirth && dateOfBirth > max) return 'Date of birth can’t be in the future.'
     if (transplantDate && transplantDate > max) return 'Transplant date can’t be in the future.'
     if (dateOfBirth && transplantDate && transplantDate < dateOfBirth) return 'Transplant date is before the date of birth.'
+    if (nextLabDate && nextLabDate < max) return 'The next lab test date is in the past.'
     if (tacMin || tacMax) {
       const lo = Number(tacMin)
       const hi = Number(tacMax)
@@ -74,6 +87,13 @@ export default function OnboardingPage() {
     setError(null)
     setSaving(next)
     try {
+      // Your name goes on your account first so the new member doc (and any
+      // circles you're already in) show it rather than a phone number.
+      const yourName = (who === 'self' ? name : myName).trim()
+      if (yourName) {
+        await saveMyFullName(yourName).catch((err) => console.warn('Name not saved', err))
+        if (patients.length > 0) await setMyName(yourName).catch((err) => console.warn('Member names not updated', err))
+      }
       const pid = await createPatient(
         {
           displayName: name,
@@ -82,6 +102,7 @@ export default function OnboardingPage() {
           transplantDate: transplantDate || null,
           doctorName,
           hospital,
+          nextLabDate: nextLabDate || null,
         },
         { self: who === 'self' }
       )
@@ -112,6 +133,20 @@ export default function OnboardingPage() {
     <>
       <Header title={isFirstProfile ? 'Welcome' : 'Add a profile'} emphasis={isFirstProfile ? undefined : 'profile'} showBack={!isFirstProfile} />
       <main className="px-4 pb-8 pt-6">
+        {hasInvites && (
+          <section aria-labelledby="ob-invites" className="mb-10">
+            <p className="eyebrow mb-3">Waiting for you</p>
+            <h2 id="ob-invites" className="mb-4 font-serif text-[2rem] font-normal leading-[1.1] tracking-[-.02em] text-ink">
+              You’ve been <em className="italic text-terra-dk">invited</em>
+            </h2>
+            <IncomingInvites invites={pendingInvites} onError={reloadInvites} />
+            <div className="mt-8 flex items-center gap-3" aria-hidden>
+              <span className="h-px flex-1 bg-hair" />
+              <span className="label text-ink-3">or create a profile</span>
+              <span className="h-px flex-1 bg-hair" />
+            </div>
+          </section>
+        )}
         <p className="eyebrow mb-3">{isFirstProfile ? 'Getting started' : 'Care circle'}</p>
         <h2 className="font-serif text-[2rem] font-normal leading-[1.1] tracking-[-.02em] text-ink">
           Whose health are we <em className="italic text-terra-dk">tracking</em>?
@@ -184,6 +219,23 @@ export default function OnboardingPage() {
 
             {who === 'other' && (
               <div>
+                <label htmlFor="ob-myname" className="mb-1.5 block text-xs font-medium text-ink-2">
+                  Your name <span className="font-normal text-ink-3">(optional)</span>
+                </label>
+                <input
+                  id="ob-myname"
+                  value={myName}
+                  onChange={(e) => setMyNameInput(e.target.value)}
+                  maxLength={100}
+                  autoComplete="name"
+                  className="field"
+                />
+                <p className="mt-1.5 text-xs text-ink-3">Shown to family in the care circle.</p>
+              </div>
+            )}
+
+            {who === 'other' && (
+              <div>
                 <span className="mb-1.5 block text-xs font-medium text-ink-2">Relationship</span>
                 <div className="flex flex-wrap gap-2">
                   <Chip selected={relationship === 'family'} onClick={() => setRelationship('family')}>Family</Chip>
@@ -214,6 +266,13 @@ export default function OnboardingPage() {
             <div>
               <label htmlFor="ob-hospital" className="mb-1.5 block text-xs font-medium text-ink-2">Hospital</label>
               <input id="ob-hospital" value={hospital} onChange={(e) => setHospital(e.target.value)} maxLength={160} className="field" />
+            </div>
+            <div>
+              <label htmlFor="ob-nextlab" className="mb-1.5 block text-xs font-medium text-ink-2">
+                Next lab test <span className="font-normal text-ink-3">(optional)</span>
+              </label>
+              <input id="ob-nextlab" type="date" min={today()} value={nextLabDate} onChange={(e) => setNextLabDate(e.target.value)} className="field tabular" />
+              <p className="mt-1.5 text-xs text-ink-3">We’ll send a reminder the day before, if notifications are on.</p>
             </div>
             <fieldset>
               <legend className="mb-1.5 block text-xs font-medium text-ink-2">

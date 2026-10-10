@@ -36,3 +36,14 @@ lib/personal/local.ts
 kidney-health-tracker.jsx
 .next-*/
 firebase.p*.json
+
+# serwist build output (app/sw.ts)
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+public/swe-worker-*.js.map
+
+# Service-account keys (never commit)
+*-firebase-adminsdk-*.json
+service-account*.json
+serviceAccount*.json

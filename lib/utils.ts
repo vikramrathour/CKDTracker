@@ -13,12 +13,31 @@ export function formatDate(dateStr: string, fmt: string = 'MMM yyyy'): string {
   return format(parseISO(dateStr), fmt)
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "2026-08-12" → "12 Aug 2026" (calendar date, no timezone shift); anything else unchanged. */
+export function formatYmd(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd)
+  if (!m) return ymd
+  const month = MONTHS[Number(m[2]) - 1]
+  const day = Number(m[3])
+  return month && day >= 1 && day <= 31 ? `${day} ${month} ${m[1]}` : ymd
+}
+
+/** Rewrite every YYYY-MM-DD inside free text (e.g. activity summaries) as "12 Aug 2026". */
+export function humanizeYmdDates(text: string): string {
+  return text.replace(/\b\d{4}-\d{2}-\d{2}\b/g, formatYmd)
+}
+
 /** Format a numeric value with appropriate precision */
+// Keeps the precision labs report (creatinine 1.15, specific gravity 1.015)
+// instead of rounding it away, while trimming float noise and trailing zeros.
+// `unit` is kept for call-site compatibility.
 export function formatValue(value: number, unit: string): string {
-  if (unit === '' || unit === '%') return value.toFixed(1)
-  if (value >= 1000) return Math.round(value).toLocaleString()
-  if (value < 0.1) return value.toFixed(3)
-  return value % 1 === 0 ? value.toString() : value.toFixed(1)
+  const abs = Math.abs(value)
+  if (abs >= 1000) return Math.round(value).toLocaleString()
+  const decimals = abs < 10 ? 3 : abs < 100 ? 2 : 1
+  return String(Number(value.toFixed(decimals)))
 }
 
 /** Determine health status color based on value vs reference range */

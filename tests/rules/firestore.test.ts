@@ -64,6 +64,41 @@ const record = (createdBy: string) => ({
   createdAt: serverTimestamp(),
 })
 
+/** A minimal valid doc per data collection, shaped like lib/firebase/* writes it. */
+function validDoc(coll: string, createdBy: string, id = 'x'): Record<string, unknown> {
+  switch (coll) {
+    case 'labRecords':
+      return record(createdBy)
+    case 'medications':
+      return { name: 'Synthetic-mab', dose: '1 mg', frequency: 'Once daily', category: 'Other', timeOfDay: ['morning'], isActive: true, stoppedAt: null, createdBy }
+    case 'visits':
+      return { visitDate: '2026-03-01', visitTime: null, doctorName: '', nextVisitDate: null, linkedRecordIds: [], questionIds: [], createdBy }
+    case 'vitals':
+      return { recordedAt: Timestamp.now(), systolic: 120, diastolic: 80, notes: '', createdBy }
+    case 'documents':
+      return {
+        kind: 'lab-report',
+        title: 'report.pdf',
+        fileName: 'report.pdf',
+        storagePath: `patients/${PID}/documents/${id}/report.pdf`,
+        contentType: 'application/pdf',
+        size: 1234,
+        documentDate: null,
+        labRecordId: null,
+        source: 'upload',
+        createdBy,
+      }
+    case 'questions':
+      return { text: 'Should my dose change?', status: 'open', visitId: null, source: 'user', createdBy }
+    case 'targets':
+      return { testName: id, min: 5, max: 8, unit: 'ng/mL', createdBy }
+    case 'alertRules':
+      return { testName: 'Creatinine', op: 'above', threshold: 2, enabled: true, label: '', createdBy, createdAt: serverTimestamp() }
+    default:
+      return { createdBy }
+  }
+}
+
 // --------------------------------------------------------------------------
 
 describe('patient creation (owner bootstrap)', () => {
@@ -105,6 +140,21 @@ describe('patient creation (owner bootstrap)', () => {
   it('rejects unknown patient fields and invalid relationship', async () => {
     await assertFails(bootstrap(as(ALICE), ALICE, ALICE, { isAdmin: true }))
     await assertFails(bootstrap(as(ALICE), ALICE, ALICE, { relationship: 'boss' }))
+  })
+
+  it('accepts an optional YYYY-MM-DD nextLabDate on create, rejects other formats', async () => {
+    await assertFails(bootstrap(as(ALICE), ALICE, ALICE, { nextLabDate: 'tomorrow' }))
+    await assertSucceeds(bootstrap(as(ALICE), ALICE, ALICE, { nextLabDate: '2026-11-02' }))
+  })
+
+  it('owner member doc may only carry a masked phone number', async () => {
+    await assertFails(bootstrap(as(ALICE), ALICE, ALICE, {}, { phone: '+919999900001' }))
+    await assertFails(bootstrap(as(ALICE), ALICE, ALICE, {}, { phone: '+91 99999 00001' }))
+    await assertSucceeds(bootstrap(as(ALICE), ALICE, ALICE, {}, { phone: '+91 ••••• •••01' }))
+  })
+
+  it('owner member doc may omit or null the phone', async () => {
+    await assertSucceeds(bootstrap(as(BOB), BOB, BOB, {}, { phone: null }))
   })
 
   it('rejects a bootstrap whose member doc is not role owner', async () => {
@@ -153,6 +203,17 @@ describe('patient doc access', () => {
     await assertFails(updateDoc(doc(as(CAROL), 'patients', PID), { doctorName: 'Dr Nope' }))
   })
 
+  it('nextLabDate: editors set a YYYY-MM-DD date or clear it; other shapes and viewers are rejected', async () => {
+    const ref = (uid: string) => doc(as(uid), 'patients', PID)
+    await assertSucceeds(updateDoc(ref(BOB), { nextLabDate: '2026-11-02', updatedAt: serverTimestamp() }))
+    await assertSucceeds(updateDoc(ref(ALICE), { nextLabDate: null }))
+    await assertFails(updateDoc(ref(BOB), { nextLabDate: '2/11/2026' }))
+    await assertFails(updateDoc(ref(BOB), { nextLabDate: 'next week' }))
+    await assertFails(updateDoc(ref(BOB), { nextLabDate: '2026-11-02T00:00' }))
+    await assertFails(updateDoc(ref(BOB), { nextLabDate: Timestamp.now() }))
+    await assertFails(updateDoc(ref(CAROL), { nextLabDate: '2026-11-02' }))
+  })
+
   it('ownerUid and createdAt are immutable, even for the owner', async () => {
     await assertFails(updateDoc(doc(as(ALICE), 'patients', PID), { ownerUid: BOB }))
     await assertFails(updateDoc(doc(as(ALICE), 'patients', PID), { createdAt: Timestamp.now() }))
@@ -199,9 +260,9 @@ describe('roles on clinical data', () => {
 
   it('editor can write every data subcollection, viewer none', async () => {
     for (const coll of ['medications', 'visits', 'vitals', 'documents', 'questions', 'targets', 'alertRules']) {
-      await assertSucceeds(setDoc(doc(as(BOB), 'patients', PID, coll, 'Tacrolimus'), { createdBy: BOB }))
+      await assertSucceeds(setDoc(doc(as(BOB), 'patients', PID, coll, 'Tacrolimus'), validDoc(coll, BOB, 'Tacrolimus')))
       await assertSucceeds(getDoc(doc(as(CAROL), 'patients', PID, coll, 'Tacrolimus')))
-      await assertFails(setDoc(doc(as(CAROL), 'patients', PID, coll, 'other'), { createdBy: CAROL }))
+      await assertFails(setDoc(doc(as(CAROL), 'patients', PID, coll, 'other'), validDoc(coll, CAROL, 'other')))
     }
   })
 
@@ -215,6 +276,113 @@ describe('roles on clinical data', () => {
   it('unknown subcollections are closed, even to the owner', async () => {
     await assertFails(setDoc(doc(as(ALICE), 'patients', PID, 'secrets', 'x'), { createdBy: ALICE }))
     await assertFails(getDoc(doc(as(ALICE), 'patients', PID, 'secrets', 'x')))
+  })
+})
+
+describe('clinical data shapes', () => {
+  beforeEach(() => seedCircle(env))
+
+  const put = (coll: string, id: string, data: Record<string, unknown>) => setDoc(doc(as(BOB), 'patients', PID, coll, id), data)
+
+  it('labRecords: recordDate must be a timestamp, values a list of <= 200, labName <= 120 chars', async () => {
+    await assertSucceeds(put('labRecords', 'ok', record(BOB)))
+    await assertFails(put('labRecords', 'n', { ...record(BOB), recordDate: 1767225600000 }))
+    await assertFails(put('labRecords', 's', { ...record(BOB), recordDate: '2026-01-01' }))
+    await assertFails(put('labRecords', 'v', { ...record(BOB), values: { a: 1 } }))
+    await assertFails(put('labRecords', 'big', { ...record(BOB), values: Array.from({ length: 201 }, () => ({ testName: 'Creatinine', value: 1 })) }))
+    await assertSucceeds(put('labRecords', 'max', { ...record(BOB), values: Array.from({ length: 200 }, () => ({ testName: 'Creatinine', value: 1 })) }))
+    await assertFails(put('labRecords', 'l', { ...record(BOB), labName: 'x'.repeat(121) }))
+    await assertFails(put('labRecords', 'l2', { ...record(BOB), labName: 7 }))
+    // Updates are checked on the resulting doc too
+    await assertFails(updateDoc(doc(as(BOB), 'patients', PID, 'labRecords', 'rec1'), { recordDate: 5 }))
+    await assertSucceeds(updateDoc(doc(as(BOB), 'patients', PID, 'labRecords', 'rec1'), { recordDate: Timestamp.now(), labName: 'Edited' }))
+  })
+
+  it('visits: visitDate is YYYY-MM-DD, optional date/time fields are typed', async () => {
+    await assertSucceeds(put('visits', 'ok', validDoc('visits', BOB)))
+    await assertSucceeds(put('visits', 'ok2', { ...validDoc('visits', BOB), visitTime: '09:30', nextVisitDate: '2026-04-01', notes: 'Synthetic note' }))
+    await assertFails(put('visits', 'n', { ...validDoc('visits', BOB), visitDate: 20260301 }))
+    await assertFails(put('visits', 'h', { ...validDoc('visits', BOB), visitDate: '2026-03-01"\r\nX: y' }))
+    await assertFails(put('visits', 'nx', { ...validDoc('visits', BOB), nextVisitDate: 'soon' }))
+    await assertFails(put('visits', 't', { ...validDoc('visits', BOB), visitTime: 'noon' }))
+    await assertFails(put('visits', 'a', { ...validDoc('visits', BOB), linkedRecordIds: 'rec1' }))
+  })
+
+  it('questions: text <= 1000 chars, status in open/asked/answered', async () => {
+    await assertSucceeds(put('questions', 'ok', validDoc('questions', BOB)))
+    await assertSucceeds(put('questions', 'chat', { ...validDoc('questions', BOB), source: 'chat', text: 'x'.repeat(1000) }))
+    await assertFails(put('questions', 'long', { ...validDoc('questions', BOB), text: 'x'.repeat(1001) }))
+    await assertFails(put('questions', 'num', { ...validDoc('questions', BOB), text: 42 }))
+    await assertFails(put('questions', 'st', { ...validDoc('questions', BOB), status: 'done' }))
+    await assertFails(put('questions', 'src', { ...validDoc('questions', BOB), source: 'admin' }))
+  })
+
+  it('alertRules: known ops, numeric thresholds where the op needs one, enabled flag, short label', async () => {
+    const rule = (over: Record<string, unknown>) => ({ ...validDoc('alertRules', BOB), ...over })
+    await assertSucceeds(put('alertRules', 'a', rule({})))
+    await assertSucceeds(put('alertRules', 'b', rule({ op: 'below', threshold: 40, testName: 'eGFR', label: 'Call clinic' })))
+    await assertSucceeds(put('alertRules', 'c', rule({ op: 'change-pct', threshold: 15 })))
+    await assertSucceeds(put('alertRules', 'd', rule({ op: 'outside-target', threshold: null })))
+    await assertFails(put('alertRules', 'e', rule({ op: 'equals' })))
+    await assertFails(put('alertRules', 'f', rule({ threshold: '2' })))
+    await assertFails(put('alertRules', 'g', rule({ threshold: null })))
+    await assertFails(put('alertRules', 'h', rule({ op: 'change-pct', threshold: 0 })))
+    await assertFails(put('alertRules', 'i', rule({ enabled: 'yes' })))
+    await assertFails(put('alertRules', 'j', rule({ testName: '' })))
+    await assertFails(put('alertRules', 'k', rule({ label: 'x'.repeat(81) })))
+    await assertFails(setDoc(doc(as(CAROL), 'patients', PID, 'alertRules', 'v'), { ...rule({}), createdBy: CAROL }))
+    // Updates are checked on the resulting doc
+    await assertSucceeds(updateDoc(doc(as(BOB), 'patients', PID, 'alertRules', 'a'), { enabled: false }))
+    await assertFails(updateDoc(doc(as(BOB), 'patients', PID, 'alertRules', 'a'), { op: 'sideways' }))
+  })
+
+  it('vitals, targets and medications: basic types', async () => {
+    await assertSucceeds(put('vitals', 'ok', validDoc('vitals', BOB)))
+    await assertFails(put('vitals', 'd', { ...validDoc('vitals', BOB), recordedAt: '2026-03-01' }))
+    await assertFails(put('vitals', 'n', { ...validDoc('vitals', BOB), systolic: '120' }))
+
+    await assertSucceeds(put('targets', 'Tacrolimus', validDoc('targets', BOB, 'Tacrolimus')))
+    await assertFails(put('targets', 'eGFR', validDoc('targets', BOB, 'Tacrolimus')))
+    await assertFails(put('targets', 'Potassium', { ...validDoc('targets', BOB, 'Potassium'), min: 'low' }))
+
+    await assertSucceeds(put('medications', 'ok', validDoc('medications', BOB)))
+    await assertFails(put('medications', 'n', { ...validDoc('medications', BOB), name: 5 }))
+    await assertFails(put('medications', 'a', { ...validDoc('medications', BOB), isActive: 'yes' }))
+  })
+
+  it('documents: storagePath is this doc\'s own folder, exact content types, no client extraction cache', async () => {
+    await assertSucceeds(put('documents', 'd1', validDoc('documents', BOB, 'd1')))
+    await assertFails(put('documents', 'd2', validDoc('documents', BOB, 'd1'))) // path of another doc
+    await assertFails(put('documents', 'd3', { ...validDoc('documents', BOB, 'd3'), storagePath: `patients/${MALLORY}/documents/d3/report.pdf` }))
+    await assertFails(put('documents', 'd4', { ...validDoc('documents', BOB, 'd4'), contentType: 'application/pdf; x=1' }))
+    await assertFails(put('documents', 'd5', { ...validDoc('documents', BOB, 'd5'), contentType: 'image/svg+xml' }))
+    await assertFails(put('documents', 'd6', { ...validDoc('documents', BOB, 'd6'), size: '1234' }))
+    await assertFails(put('documents', 'd7', { ...validDoc('documents', BOB, 'd7'), extraction: { values: [], method: 'regex' } }))
+    await assertFails(put('documents', 'd8', { ...validDoc('documents', BOB, 'd8'), fileName: '../x.pdf', storagePath: `patients/${PID}/documents/d8/../x.pdf` }))
+
+    const d1 = doc(as(BOB), 'patients', PID, 'documents', 'd1')
+    await assertSucceeds(updateDoc(d1, { title: 'Renamed', documentDate: '2026-03-01', labRecordId: 'rec1', kind: 'prescription' }))
+    await assertFails(updateDoc(d1, { storagePath: `patients/${PID}/documents/d1/other.pdf` }))
+    await assertFails(updateDoc(d1, { contentType: 'image/png' }))
+    await assertFails(updateDoc(d1, { extraction: { values: [], method: 'gemini' } }))
+    await assertFails(updateDoc(d1, { documentDate: 'March' }))
+  })
+
+  it('migrated documents (older file fields) stay editable', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'patients', PID, 'documents', 'mig1'), {
+        kind: 'lab-report',
+        fileName: '1700000000000-Old Report.pdf',
+        storagePath: `patients/${PID}/documents/mig1/1700000000000-Old Report.pdf`,
+        contentType: 'application/octet-stream',
+        size: 0,
+        source: 'migration',
+        legacyPath: `lab-pdfs/${PID}/1700000000000-Old Report.pdf`,
+        extraction: { values: [], method: 'none' },
+        createdBy: ALICE,
+      })
+    })
+    await assertSucceeds(updateDoc(doc(as(BOB), 'patients', PID, 'documents', 'mig1'), { labRecordId: 'rec1', documentDate: '2023-11-14' }))
   })
 })
 
@@ -304,6 +472,31 @@ describe('activity log (append-only)', () => {
     await assertFails(addDoc(collection(as(BOB), 'patients', PID, 'activity'), entry(ALICE)))
     await assertFails(addDoc(collection(as(BOB), 'patients', PID, 'activity'), { ...entry(BOB), createdAt: Timestamp.fromMillis(0) }))
     await assertFails(addDoc(collection(as(CAROL), 'patients', PID, 'activity'), entry(CAROL)))
+    await assertFails(addDoc(collection(as(BOB), 'patients', PID, 'activity'), entry(ALICE)))
+  })
+
+  const log = (uid: string, data: Record<string, unknown>) =>
+    addDoc(collection(as(uid), 'patients', PID, 'activity'), { actorUid: uid, createdAt: serverTimestamp(), ...data })
+
+  it('only known keys and short strings', async () => {
+    await assertSucceeds(log(BOB, { action: 'record.added', targetType: 'labRecord', targetId: 'rec1', summary: 'Added a report for 2026-03-01' }))
+    await assertFails(log(BOB, { action: 'record.added', isAdmin: true }))
+    await assertFails(log(BOB, { action: 'record.added', summary: 'x'.repeat(201) }))
+    await assertFails(log(BOB, { action: 'record.added', summary: 42 }))
+  })
+
+  it('server-only actions cannot be forged; member edits need the owner', async () => {
+    for (const action of ['member.added', 'member.invited', 'invite.revoked', 'member.left', 'something.else']) {
+      await assertFails(log(ALICE, { action }))
+    }
+    await assertFails(log(BOB, { action: 'member.removed', targetId: CAROL }))
+    await assertSucceeds(log(ALICE, { action: 'member.role-changed', targetId: CAROL, summary: 'Role set to editor' }))
+    await assertSucceeds(log(ALICE, { action: 'member.removed', targetId: CAROL }))
+  })
+
+  it('actorName must be the name the care circle has for you', async () => {
+    await assertSucceeds(log(BOB, { action: 'record.added', actorName: 'bob' }))
+    await assertFails(log(BOB, { action: 'record.added', actorName: 'Dr. Alice (owner)' }))
   })
 
   it('entries cannot be updated or deleted, even by the owner', async () => {
@@ -331,6 +524,11 @@ describe('chat threads (server-written, private to the creator)', () => {
     await assertSucceeds(getDoc(doc(db, 'patients', PID, 'chats', 'c1')))
     await assertSucceeds(getDocs(query(collection(db, 'patients', PID, 'chats'), where('createdBy', '==', CAROL))))
     await assertSucceeds(getDocs(collection(db, 'patients', PID, 'chats', 'c1', 'messages')))
+  })
+
+  it('listing threads without the createdBy filter fails, even for the creator', async () => {
+    await assertFails(getDocs(collection(as(CAROL), 'patients', PID, 'chats')))
+    await assertFails(getDocs(query(collection(as(CAROL), 'patients', PID, 'chats'), where('createdBy', '==', ALICE))))
   })
 
   it('other members (even the owner) cannot read someone else\'s thread', async () => {

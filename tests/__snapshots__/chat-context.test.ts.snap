@@ -1,0 +1,51 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildChatContext (synthetic fixture) > matches the snapshot 1`] = `
+"TODAY: 2026-10-10
+PATIENT: age 46; kidney transplant on 2019-05-20 (7.4 years ago)
+
+ALERTS (computed by the app from the latest values, most urgent first):
+- [critical] [2026-09-28] Creatinine 1.42 mg/dL is 27% above the recent baseline of 1.12.
+- [warning] [2026-09-28] Potassium 5.8 mEq/L is above the alert level of 5.5 (above 6.0 is urgent).
+- [warning] [2026-09-28] Tacrolimus 9.6 ng/mL is above the patient's target of 5–8.
+- [warning] [2026-09-28] Hemoglobin 12.4 g/dL is below your alert level of 12.5.
+
+TARGETS (patient-specific, set by the transplant team; override the lab's reference range):
+- Tacrolimus: 5-8 ng/mL
+
+LAB_VALUES (4 reports; CSV; refMin/refMax = lab reference range):
+recordId,date,test,value,unit,refMin,refMax,target
+synA,2026-04-02,Creatinine,1.1,mg/dL,0.7,1.3,
+synA,2026-04-02,eGFR,74,mL/min/1.73m²,60,120,
+synA,2026-04-02,Tacrolimus,6.8,ng/mL,5,10,5-8
+synA,2026-04-02,Potassium,4.6,mEq/L,3.5,5.1,
+synB,2026-06-04,Creatinine,1.15,mg/dL,0.7,1.3,
+synB,2026-06-04,eGFR,71,mL/min/1.73m²,60,120,
+synB,2026-06-04,Tacrolimus,7.4,ng/mL,5,10,5-8
+synB,2026-06-04,Potassium,4.9,mEq/L,3.5,5.1,
+synC,2026-08-06,Creatinine,1.12,mg/dL,0.7,1.3,
+synC,2026-08-06,eGFR,73,mL/min/1.73m²,60,120,
+synC,2026-08-06,Tacrolimus,8.9,ng/mL,5,10,5-8
+synC,2026-08-06,Potassium,5.3,mEq/L,3.5,5.1,
+synC,2026-08-06,Hemoglobin,12.1,g/dL,13,17,
+synD,2026-09-28,Creatinine,1.42,mg/dL,0.7,1.3,
+synD,2026-09-28,eGFR,58,mL/min/1.73m²,60,120,
+synD,2026-09-28,Tacrolimus,9.6,ng/mL,5,10,5-8
+synD,2026-09-28,Potassium,5.8,mEq/L,3.5,5.1,
+synD,2026-09-28,Hemoglobin,12.4,g/dL,13,17,
+
+MEDICATIONS (active):
+- Tacrolimus 2 mg, twice daily [Immunosuppressant]; dose changes: 2026-07-01: 1.5 mg -> 2 mg (Level low at review)
+- Prednisolone 5 mg, once daily [Corticosteroid]
+
+VISITS (last 3):
+- 2026-07-01: purpose: Routine review; advice: Increase tacrolimus, repeat labs in 4 weeks; next visit: 2026-10-14
+- 2026-04-05: purpose: Routine review; notes: Stable
+
+OPEN_QUESTIONS (for the next appointment):
+- Should potassium be rechecked sooner?
+
+DOCUMENTS (originals; read one with get_document(documentId)):
+documentId,date,kind,title
+doc1,2026-09-28,lab-report,"Report, Sep""
+`;

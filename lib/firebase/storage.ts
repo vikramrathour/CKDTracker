@@ -1,19 +1,17 @@
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { collection, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
+import { collection, deleteDoc, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { getStorageInstance } from './config'
 import { currentUid, getDb } from './firestore'
 import { DOCUMENT_CONTENT_TYPES, DOCUMENT_MAX_BYTES, type DocumentKind } from '@/lib/types/care'
-
-/** Storage object names: keep it to a safe, readable subset. */
-function safeFileName(name: string): string {
-  const cleaned = name.normalize('NFKD').replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_')
-  return cleaned.slice(-120) || 'document'
-}
+import { documentStoragePath, safeFileName } from '@/lib/documents/paths'
 
 /**
  * Upload a file into the patient's document vault:
- *   Storage   patients/{pid}/documents/{docId}/{fileName}
- *   Firestore patients/{pid}/documents/{docId}   (DocumentMeta)
+ *   1. Firestore patients/{pid}/documents/{docId}   (DocumentMeta, incl. storagePath)
+ *   2. Storage   patients/{pid}/documents/{docId}/{fileName}
+ * Metadata goes first: storage.rules only accept an object whose path equals
+ * the metadata's storagePath, so no file can exist without its metadata. If
+ * the upload fails the metadata doc is removed again.
  * Editors/owners only; PDF or image, under 20 MB (storage.rules).
  */
 export async function uploadDocument(
@@ -30,14 +28,11 @@ export async function uploadDocument(
   const db = getDb()
   const docRef = doc(collection(db, 'patients', pid, 'documents'))
   const fileName = safeFileName(file.name)
-  const storagePath = `patients/${pid}/documents/${docRef.id}/${fileName}`
-
-  const storage = await getStorageInstance()
-  await uploadBytes(ref(storage, storagePath), file, { contentType })
+  const storagePath = documentStoragePath(pid, docRef.id, fileName)
 
   await setDoc(docRef, {
     kind: meta.kind,
-    title: meta.title ?? file.name.slice(0, 200),
+    title: (meta.title ?? file.name).slice(0, 200),
     fileName,
     storagePath,
     contentType,
@@ -48,6 +43,15 @@ export async function uploadDocument(
     createdBy: currentUid(),
     createdAt: serverTimestamp(),
   })
+
+  try {
+    const storage = await getStorageInstance()
+    await uploadBytes(ref(storage, storagePath), file, { contentType })
+  } catch (err) {
+    // Don't leave metadata pointing at a file that was never stored.
+    await deleteDoc(docRef).catch(() => console.warn('Could not remove metadata for a failed upload'))
+    throw err
+  }
   return { docId: docRef.id, storagePath }
 }
 

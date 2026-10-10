@@ -163,3 +163,44 @@ describe('getScoreColor / getScoreLabel', () => {
     expect(getScoreLabel(0)).toBe('Critical')
   })
 })
+
+describe('computeHealthScore — patient targets', () => {
+  it('without targets behaves exactly as before (old signature)', () => {
+    const values = [lv('Creatinine', 1.6), lv('eGFR', 50), lv('Tacrolimus', 9)]
+    expect(computeHealthScore(values, undefined)).toEqual(computeHealthScore(values))
+    expect(computeHealthScore(values, {})).toEqual(computeHealthScore(values))
+  })
+
+  it('a target overrides the printed range (eGFR no longer "always abnormal")', () => {
+    // Report prints the general-population range; doctor's target is ≥ 45.
+    const egfr = lv('eGFR', 58, { referenceMin: 90, referenceMax: 200 })
+    expect(computeHealthScore([egfr]).systems.kidney).toBeLessThan(100)
+    expect(computeHealthScore([egfr], { eGFR: { min: 45, max: null } }).systems.kidney).toBe(100)
+  })
+
+  it('a tighter target can lower the score', () => {
+    // Tacrolimus 9.5 is inside the default 5–10 but above a 5–8 target (1.5 over width 3).
+    const tac = lv('Tacrolimus', 9.5)
+    expect(computeHealthScore([tac]).systems.immunosuppression).toBe(100)
+    expect(computeHealthScore([tac], { Tacrolimus: { min: 5, max: 8 } }).systems.immunosuppression).toBe(decay(1.5, 3))
+  })
+
+  it('one-sided target keeps the default other bound for the width', () => {
+    // eGFR target ≥ 45 + default max 120 → width 75; value 30 is 15 below.
+    const s = computeHealthScore([lv('eGFR', 30)], { eGFR: { min: 45, max: null } }).systems.kidney
+    expect(s).toBe(decay(15, 75))
+  })
+
+  it('open-sided range (conflicting bound dropped) decays against the default width', () => {
+    // Target max 0.5 conflicts with default min 0.7 → range ≤ 0.5; width falls back to 0.6.
+    const s = computeHealthScore([lv('Creatinine', 0.8)], { Creatinine: { min: null, max: 0.5 } }).systems.kidney
+    expect(s).toBe(decay(0.3, 0.6))
+  })
+
+  it('a target makes an otherwise-unknown test scoreable', () => {
+    // Unknown tests are neutral (50) and not in any system, so check through a known panel
+    const unknown = { ...lv('Ferritin', 10), panel: 'hemogram' as const }
+    expect(computeHealthScore([unknown]).systems.hemogram).toBe(50)
+    expect(computeHealthScore([unknown], { Ferritin: { min: 30, max: 300 } }).systems.hemogram).toBe(decay(20, 270))
+  })
+})

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatPhoneForDisplay, maskPhone, normalizeIndianPhone } from '@/lib/phone'
+import { formatPersonName, formatPhoneForDisplay, isPhoneLike, maskPhone, memberLabel, normalizeIndianPhone, pickPersonName } from '@/lib/phone'
 
 // Synthetic numbers only (+91 99999 0000x are the Firebase test-number range we document).
 const E164 = '+919999900001'
@@ -87,5 +87,30 @@ describe('maskPhone', () => {
 
   it('returns empty string for empty input', () => {
     expect(maskPhone(null)).toBe('')
+  })
+})
+
+describe('person names never show a phone number', () => {
+  it('isPhoneLike spots full and masked numbers, not names', () => {
+    expect(isPhoneLike(E164)).toBe(true)
+    expect(isPhoneLike('+91 99999 00001')).toBe(true)
+    expect(isPhoneLike('+91 ••••• •••01')).toBe(true)
+    expect(isPhoneLike('Test Member')).toBe(false)
+    expect(isPhoneLike('Member ••01')).toBe(false)
+    expect(isPhoneLike('')).toBe(false)
+  })
+
+  it('pickPersonName: profile name → auth name → "Member ••01" → Someone', () => {
+    expect(pickPersonName({ fullName: 'Test Person', displayName: 'Other', phone: E164 })).toBe('Test Person')
+    expect(pickPersonName({ fullName: '  ', displayName: 'Auth Name', phone: E164 })).toBe('Auth Name')
+    expect(pickPersonName({ fullName: E164, displayName: '+91 99999 00001', phone: E164 })).toBe('Member ••01')
+    expect(pickPersonName({})).toBe('Someone')
+  })
+
+  it('formatPersonName rewrites legacy phone names at render time', () => {
+    expect(formatPersonName(E164)).toBe('Member ••01')
+    expect(formatPersonName('Test Person')).toBe('Test Person')
+    expect(formatPersonName('')).toBe('Someone')
+    expect(memberLabel(null)).toBe('Someone')
   })
 })

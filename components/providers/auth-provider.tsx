@@ -11,6 +11,8 @@ import {
   reloadUser,
   friendlyAuthError,
 } from '@/lib/firebase/auth'
+import { clearOfflineData } from '@/lib/firebase/config'
+import { disablePushForSignOut } from '@/lib/firebase/messaging'
 
 interface AuthContext {
   user: User | null
@@ -74,7 +76,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const logOut = useCallback(async () => {
+    // Unregister this device's push token while still signed in (rules are owner-only).
+    if (uidRef.current) await disablePushForSignOut(uidRef.current)
     await signOut()
+    // Shared devices: drop the offline Firestore cache. That terminates
+    // Firestore, so finish with a full page load of the login screen.
+    await clearOfflineData()
+    window.location.assign('/login')
   }, [])
 
   const refreshUser = useCallback(async () => {

@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { ArrowLeft, Settings } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { usePatient } from '@/components/providers/patient-provider'
 import { PatientSwitcher } from './patient-switcher'
 
@@ -37,6 +37,7 @@ export const primaryIconButton =
 
 export function Header({ title, emphasis, subtitle, showBack, actions }: HeaderProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { patients, activePatient } = usePatient()
   // With more than one profile, always show whose data this is. Pages with a
   // back button are task screens (add/upload): name shown, but not switchable
@@ -82,14 +83,17 @@ export function Header({ title, emphasis, subtitle, showBack, actions }: HeaderP
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">
           {actions}
-          <button
-            type="button"
-            onClick={() => router.push('/settings')}
-            aria-label="Settings"
-            className={`${iconButton} -mr-2`}
-          >
-            <Settings className="h-5 w-5" />
-          </button>
+          {/* No self-link on the Settings screen itself. */}
+          {pathname !== '/settings' && (
+            <button
+              type="button"
+              onClick={() => router.push('/settings')}
+              aria-label="Settings"
+              className={`${iconButton} -mr-2`}
+            >
+              <Settings className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </div>
     </header>

@@ -1,6 +1,7 @@
 'use client'
 
-import { cn, getLabValueStatus } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import { valueStatus, type TargetMap } from '@/lib/calculations/targets'
 import { computeDelta, formatDelta } from '@/lib/calculations/deltas'
 import type { LabValue } from '@/lib/types/lab-record'
 import { Sparkline } from '@/components/records/sparkline'
@@ -15,6 +16,7 @@ interface CriticalMetricCardProps {
   previous: LabValue | undefined
   trendPoints: TrendPoint[]
   onClick?: () => void
+  targetMap?: TargetMap
 }
 
 export function CriticalMetricCard({
@@ -24,11 +26,12 @@ export function CriticalMetricCard({
   previous,
   trendPoints,
   onClick,
+  targetMap,
 }: CriticalMetricCardProps) {
   const colors = useThemeColors()
   if (!current) return null
 
-  const status = getLabValueStatus(current)
+  const status = valueStatus(testName, current.value, current, targetMap)
   const delta = previous ? computeDelta(testName, current.value, previous.value) : null
   const styles = STATUS_STYLES[status]
 

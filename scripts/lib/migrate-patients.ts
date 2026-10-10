@@ -18,6 +18,7 @@
  */
 import { createHash } from 'node:crypto'
 import { FieldValue, Timestamp, type DocumentReference, type DocumentSnapshot, type Firestore } from 'firebase-admin/firestore'
+import { maskPhone } from '../../lib/phone'
 
 /** Minimal slice of @google-cloud/storage's Bucket that the migration uses. */
 export interface BucketLike {
@@ -243,7 +244,8 @@ export async function migrateUser(
       uid,
       role: 'owner',
       displayName,
-      phone: str(profile.phoneNumber, 20) || null,
+      // Masked: member docs are readable by every member of the circle.
+      phone: maskPhone(str(profile.phoneNumber, 20), 2) || null,
       addedBy: uid,
       addedAt: FieldValue.serverTimestamp(),
     })

@@ -283,7 +283,8 @@ export async function reloadUser(): Promise<User | null> {
  * Create the users/{uid} profile doc if it doesn't exist yet, and keep its
  * contact fields (email, phoneNumber) in sync with the auth account. Called
  * from onAuthStateChanged so every sign-in path (Google popup, redirect,
- * phone OTP) gets a profile.
+ * phone OTP) gets a profile. Account fields only: clinical details (DOB,
+ * transplant date, doctor, next lab date) live on patients/{pid}.
  */
 export async function ensureUserProfile(user: User): Promise<void> {
   if (!db) return
@@ -298,12 +299,6 @@ export async function ensureUserProfile(user: User): Promise<void> {
     fullName: user.displayName || '',
     email: user.email || '',
     phoneNumber: user.phoneNumber || '',
-    dateOfBirth: null,
-    bloodGroup: '',
-    transplantDate: null,
-    doctorName: '',
-    doctorHospital: '',
-    nextLabDate: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -336,6 +331,25 @@ async function syncProfileContact(user: User, existing?: Record<string, unknown>
   if (Object.keys(patch).length === 0) return
   patch.updatedAt = serverTimestamp()
   await updateDoc(profileRef, patch)
+}
+
+/** users/{uid}.fullName, or '' when unset/unreadable. */
+export async function getMyFullName(): Promise<string> {
+  const user = auth?.currentUser
+  if (!db || !user) return ''
+  const snap = await getDoc(doc(db, 'users', user.uid))
+  const v = snap.exists() ? snap.data().fullName : ''
+  return typeof v === 'string' ? v : ''
+}
+
+/**
+ * Save your own name on users/{uid}.fullName (what other members see once it
+ * is copied to member docs; see setMyName in ./invites). Owner-only doc.
+ */
+export async function saveMyFullName(fullName: string): Promise<void> {
+  const user = requireAuth().currentUser
+  if (!db || !user) throw new Error('Not signed in')
+  await setDoc(doc(db, 'users', user.uid), { fullName: fullName.trim().slice(0, 100), updatedAt: serverTimestamp() }, { merge: true })
 }
 
 // ---------------------------------------------------------------------------

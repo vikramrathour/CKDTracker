@@ -12,7 +12,7 @@ import {
   CartesianGrid,
   ResponsiveContainer,
 } from 'recharts'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, formatValue } from '@/lib/utils'
 import { useThemeColors, type ThemeColors } from '@/components/ui/status'
 import type { TrendPoint } from '@/lib/types/analysis'
 
@@ -59,12 +59,17 @@ export function TrendChart({
     value: p.value,
   }))
 
-  const trendDir = stats?.slope != null
-    ? stats.slope > 0.01 ? '↗' : stats.slope < -0.01 ? '↘' : '→'
-    : '→'
-  const trendLabel = stats?.slope != null
-    ? stats.slope > 0.01 ? 'Rising' : stats.slope < -0.01 ? 'Falling' : 'Stable'
-    : 'Stable'
+  // Direction follows the same latest-vs-previous change that is printed next
+  // to it (the regression slope could disagree, e.g. "Rising (−1.4%)").
+  // Within ±1% counts as stable; without a previous value, fall back to the slope.
+  const dir: 1 | -1 | 0 =
+    stats?.changePct != null
+      ? stats.changePct >= 1 ? 1 : stats.changePct <= -1 ? -1 : 0
+      : stats?.slope != null
+        ? stats.slope > 0.01 ? 1 : stats.slope < -0.01 ? -1 : 0
+        : 0
+  const trendDir = dir > 0 ? '↗' : dir < 0 ? '↘' : '→'
+  const trendLabel = dir > 0 ? 'Rising' : dir < 0 ? 'Falling' : 'Stable'
 
   // Same good/bad rule as before: rising is good only when higher is better.
   const changeIsGood = stats?.changePct != null && stats.changePct > 0 ? !!higherIsBetter : !higherIsBetter
@@ -83,7 +88,7 @@ export function TrendChart({
         {stats && (
           <div className="flex-shrink-0 text-right">
             <div className="num text-[28px] leading-none text-ink">{stats.last}</div>
-            <div className={cn('mt-1 text-[11px] font-semibold tabular', changeIsGood ? 'text-sage' : 'text-terra-dk')}>
+            <div className={cn('mt-1 text-[11px] font-semibold tabular', dir === 0 ? 'text-ink-3' : changeIsGood ? 'text-sage' : 'text-terra-dk')}>
               {trendDir} {trendLabel}{' '}
               {stats.changePct != null
                 ? `(${stats.changePct > 0 ? '+' : ''}${stats.changePct.toFixed(1)}%)`
@@ -97,9 +102,9 @@ export function TrendChart({
       {stats && (
         <dl className="mb-2 mt-3 flex gap-4 border-t border-hair pt-2.5">
           {[
-            { l: 'Min', v: stats.min.toFixed(2) },
-            { l: 'Avg', v: stats.avg.toFixed(2) },
-            { l: 'Max', v: stats.max.toFixed(2) },
+            { l: 'Min', v: formatValue(stats.min, '') },
+            { l: 'Avg', v: formatValue(stats.avg, '') },
+            { l: 'Max', v: formatValue(stats.max, '') },
             { l: 'n', v: stats.count },
           ].map((s) => (
             <div key={s.l} className="flex items-baseline gap-1.5">

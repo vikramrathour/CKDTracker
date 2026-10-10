@@ -5,8 +5,8 @@ rules_version = '2';
 //   users/{uid}                         profile + activePatientId (owner-only)
 //   users/{uid}/fcmTokens/{token}       push tokens (owner-only)
 //   users/{uid}/labRecords|medications  LEGACY, read-only until the cleanup release
-//   patients/{pid}                      ownerUid, displayName, dob, transplantDate, doctor, hospital
-//     members/{uid}                     uid, role (owner|editor|viewer), displayName, phone, addedBy
+//   patients/{pid}                      ownerUid, displayName, dob, transplantDate, doctor, hospital, nextLabDate
+//     members/{uid}                     uid, role (owner|editor|viewer), displayName, phone (masked), addedBy
 //     labRecords | medications(/doseHistory) | visits | vitals | documents
 //       | questions | targets/{testName} | alertRules        viewer read, editor write
 //     activity/{id}                     append-only audit
@@ -59,7 +59,8 @@ service cloud.firestore {
     }
 
     function patientEditable() {
-      return ['displayName', 'relationship', 'dateOfBirth', 'transplantDate', 'doctorName', 'hospital', 'updatedAt'];
+      return ['displayName', 'relationship', 'dateOfBirth', 'transplantDate', 'doctorName', 'hospital',
+              'nextLabDate', 'updatedAt'];
     }
 
     function validPatientFields(data) {
@@ -69,7 +70,8 @@ service cloud.firestore {
         && optString(data, 'dateOfBirth', 10)
         && optString(data, 'transplantDate', 10)
         && optString(data, 'doctorName', 120)
-        && optString(data, 'hospital', 160);
+        && optString(data, 'hospital', 160)
+        && optDate(data, 'nextLabDate');
     }
 
     // Data docs: createdBy is set to the author on create and never changes.
@@ -84,6 +86,208 @@ service cloud.firestore {
     function isDataCollection(coll) {
       return coll in ['labRecords', 'medications', 'visits', 'vitals', 'documents',
                       'questions', 'targets', 'alertRules'];
+    }
+
+    // ------------------------------------------------ clinical data shapes
+    //
+    // Checked on the full post-write document (create and update), so a client
+    // can never store a field with a type that breaks other members' views,
+    // exports or the visit-prep PDF. Field names/limits mirror the writers in
+    // lib/firebase/*.ts. Extra fields are allowed (legacy/migrated docs).
+
+    function ymd() {
+      return '^[0-9]{4}-[0-9]{2}-[0-9]{2}$';
+    }
+
+    function optNumber(data, key) {
+      return !(key in data) || data[key] == null || data[key] is number;
+    }
+
+    function optBool(data, key) {
+      return !(key in data) || data[key] is bool;
+    }
+
+    function optList(data, key, max) {
+      return !(key in data) || data[key] == null || (data[key] is list && data[key].size() <= max);
+    }
+
+    function optDate(data, key) {
+      return !(key in data) || data[key] == null || (data[key] is string && data[key].matches(ymd()));
+    }
+
+    function optTimestamp(data, key) {
+      return !(key in data) || data[key] == null || data[key] is timestamp;
+    }
+
+    // patients/{pid}/labRecords  (lib/firebase/firestore.ts, documents.ts)
+    function validLabRecord(d) {
+      return d.recordDate is timestamp
+        && d.values is list && d.values.size() <= 200
+        && optString(d, 'labName', 120)
+        && optString(d, 'doctorName', 120)
+        && optString(d, 'notes', 5000)
+        && optString(d, 'pdfPath', 600)
+        && optString(d, 'sourceDocumentId', 128);
+    }
+
+    // patients/{pid}/visits  (lib/firebase/visits.ts, components/visits/visit-form.tsx)
+    function validVisit(d) {
+      return d.visitDate is string && d.visitDate.matches(ymd())
+        && optDate(d, 'nextVisitDate')
+        && (!('visitTime' in d) || d.visitTime == null
+            || (d.visitTime is string && d.visitTime.matches('^([0-9]{2}:[0-9]{2})?$')))
+        && optString(d, 'doctorName', 120)
+        && optString(d, 'hospital', 160)
+        && optString(d, 'purpose', 300)
+        && optString(d, 'notes', 4000)
+        && optString(d, 'advice', 4000)
+        && optString(d, 'doseChanges', 2000)
+        && optList(d, 'linkedRecordIds', 200)
+        && optList(d, 'questionIds', 200)
+        && optList(d, 'doseChangeRefs', 200);
+    }
+
+    // patients/{pid}/questions  (lib/firebase/questions.ts, chat.ts)
+    function validQuestion(d) {
+      return d.text is string && d.text.size() <= 1000
+        && d.status in ['open', 'asked', 'answered']
+        && optString(d, 'answer', 4000)
+        && optString(d, 'visitId', 128)
+        && (!('source' in d) || d.source in ['user', 'chat'])
+        && optTimestamp(d, 'askedAt')
+        && optTimestamp(d, 'answeredAt');
+    }
+
+    // patients/{pid}/vitals  (lib/firebase/vitals.ts)
+    function validVital(d) {
+      return d.recordedAt is timestamp
+        && optNumber(d, 'systolic')
+        && optNumber(d, 'diastolic')
+        && optNumber(d, 'pulse')
+        && optNumber(d, 'weightKg')
+        && optNumber(d, 'temperatureC')
+        && optNumber(d, 'glucose')
+        && optNumber(d, 'urineOutputMl')
+        && optString(d, 'notes', 500);
+    }
+
+    // patients/{pid}/targets/{testName}  (lib/firebase/patients.ts setTarget)
+    function validTarget(d, docId) {
+      return d.testName == docId
+        && optNumber(d, 'min')
+        && optNumber(d, 'max')
+        && optString(d, 'unit', 30)
+        && optString(d, 'setBy', 120)
+        && optString(d, 'notes', 500);
+    }
+
+    // patients/{pid}/alertRules  (lib/firebase/alert-rules.ts; ops from lib/calculations/alerts.ts)
+    // above/below need a threshold; change-pct a positive percent; outside-target none.
+    function validAlertRule(d) {
+      return d.testName is string && d.testName.size() > 0 && d.testName.size() <= 100
+        && d.op in ['above', 'below', 'change-pct', 'outside-target']
+        && optNumber(d, 'threshold')
+        && (d.op == 'outside-target'
+            || (d.threshold is number && (d.op != 'change-pct' || (d.threshold > 0 && d.threshold <= 1000))))
+        && d.enabled is bool
+        && optString(d, 'label', 80);
+    }
+
+    // patients/{pid}/medications  (lib/firebase/medications.ts; lenient for migrated docs)
+    function validMedication(d) {
+      return d.name is string && d.name.size() <= 200
+        && optString(d, 'dose', 200)
+        && optString(d, 'frequency', 200)
+        && optString(d, 'category', 60)
+        && optString(d, 'prescribedBy', 200)
+        && optString(d, 'notes', 2000)
+        && optString(d, 'startDate', 40)
+        && optString(d, 'stoppedAt', 40)
+        && optString(d, 'stopReason', 300)
+        && optBool(d, 'isActive')
+        && optList(d, 'timeOfDay', 12);
+    }
+
+    function documentContentTypes() {
+      return ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+    }
+
+    // patients/{pid}/documents/{docId}  (lib/firebase/storage.ts uploadDocument)
+    // storagePath must be this document's own folder: storage.rules only accept
+    // an upload at exactly that path, and server routes only read from it.
+    // `extraction` is the server's cache (Admin SDK) and never client-written.
+    function validDocument(pid, docId, d) {
+      return d.kind in ['lab-report', 'prescription', 'discharge-summary', 'imaging', 'other']
+        && d.fileName is string && d.fileName.size() > 0 && d.fileName.size() <= 200
+        && !d.fileName.matches('.*[/\\\\].*') && !(d.fileName in ['.', '..'])
+        && d.storagePath == 'patients/' + pid + '/documents/' + docId + '/' + d.fileName
+        && d.contentType in documentContentTypes()
+        && d.size is int && d.size >= 0 && d.size < 20 * 1024 * 1024
+        && (!('source' in d) || d.source in ['upload', 'camera'])
+        && validDocumentEdits(d);
+    }
+
+    // The fields a client may change after upload (also checked on create).
+    function validDocumentEdits(d) {
+      return d.kind in ['lab-report', 'prescription', 'discharge-summary', 'imaging', 'other']
+        && optString(d, 'title', 200)
+        && optDate(d, 'documentDate')
+        && optString(d, 'labRecordId', 128);
+    }
+
+    function validData(pid, coll, docId, d) {
+      return coll == 'labRecords' ? validLabRecord(d)
+        : coll == 'visits' ? validVisit(d)
+        : coll == 'questions' ? validQuestion(d)
+        : coll == 'vitals' ? validVital(d)
+        : coll == 'targets' ? validTarget(d, docId)
+        : coll == 'alertRules' ? validAlertRule(d)
+        : coll == 'medications' ? validMedication(d)
+        : coll == 'documents' ? validDocument(pid, docId, d)
+        : true;
+    }
+
+    // Only kind/title/documentDate/labRecordId change after upload; the file
+    // identity and the server's extraction cache are fixed (so migrated docs,
+    // whose file fields predate these rules, stay editable).
+    function documentUpdateAllowed() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['storagePath', 'fileName', 'contentType', 'size', 'extraction', 'source', 'legacyPath']);
+    }
+
+    // ------------------------------------------------------------ activity
+    //
+    // Client-written audit entries. member.added / member.invited /
+    // invite.revoked / member.left are written by the server (Admin SDK) only.
+    // member.role-changed / member.removed accompany owner-only member edits.
+
+    function clientActivityActions() {
+      return ['patient.created', 'patient.updated',
+              'record.added', 'record.updated', 'record.deleted',
+              'medication.added', 'medication.updated', 'medication.deleted', 'medication.stopped',
+              'document.uploaded', 'visit.added', 'question.added',
+              'target.updated', 'target.removed', 'vital.added'];
+    }
+
+    function validActivity(pid, d) {
+      return d.keys().hasOnly(['actorUid', 'actorName', 'action', 'targetType', 'targetId', 'summary', 'createdAt'])
+        && d.actorUid == request.auth.uid
+        && d.createdAt == request.time
+        && (d.action in clientActivityActions()
+            || (d.action in ['member.role-changed', 'member.removed'] && hasRole(pid, 'owner')))
+        // The name shown in the feed is the one the care circle knows you by.
+        && (!('actorName' in d) || d.actorName == get(myMemberPath(pid)).data.get('displayName', null))
+        && optString(d, 'targetType', 40)
+        && optString(d, 'targetId', 200)
+        && optString(d, 'summary', 200);
+    }
+
+    // Member docs never hold a full phone number (every viewer can read them):
+    // only a masked one like '+91 ••••• •••01' (lib/phone.ts maskPhone).
+    function maskedPhoneOrNull(d) {
+      return !('phone' in d) || d.phone == null
+        || (d.phone is string && d.phone.size() <= 32 && d.phone.matches('.*•.*')
+            && !d.phone.matches('.*[0-9]{5}.*'));
     }
 
     // ------------------------------------------------------------------ users
@@ -150,6 +354,7 @@ service cloud.firestore {
           && request.resource.data.role == 'owner'
           && request.resource.data.addedBy == memberUid
           && request.resource.data.keys().hasOnly(['uid', 'role', 'displayName', 'phone', 'addedBy', 'addedAt'])
+          && maskedPhoneOrNull(request.resource.data)
           && !exists(patientPath(pid))
           && getAfter(patientPath(pid)).data.ownerUid == request.auth.uid;
 
@@ -168,8 +373,13 @@ service cloud.firestore {
       // ---- clinical data: viewers read, editors write
       match /{coll}/{docId} {
         allow read: if isDataCollection(coll) && hasRole(pid, 'viewer');
-        allow create: if isDataCollection(coll) && hasRole(pid, 'editor') && createdByMe();
-        allow update: if isDataCollection(coll) && hasRole(pid, 'editor') && createdByUnchanged();
+        allow create: if isDataCollection(coll) && hasRole(pid, 'editor') && createdByMe()
+          && validData(pid, coll, docId, request.resource.data)
+          && !(coll == 'documents' && 'extraction' in request.resource.data);
+        allow update: if isDataCollection(coll) && hasRole(pid, 'editor') && createdByUnchanged()
+          && (coll == 'documents'
+                ? documentUpdateAllowed() && validDocumentEdits(request.resource.data)
+                : validData(pid, coll, docId, request.resource.data));
         allow delete: if isDataCollection(coll) && hasRole(pid, 'editor');
       }
 
@@ -183,9 +393,7 @@ service cloud.firestore {
       // ---- audit trail: append-only
       match /activity/{entryId} {
         allow read: if hasRole(pid, 'viewer');
-        allow create: if hasRole(pid, 'editor')
-          && request.resource.data.actorUid == request.auth.uid
-          && request.resource.data.createdAt == request.time;
+        allow create: if hasRole(pid, 'editor') && validActivity(pid, request.resource.data);
         allow update, delete: if false;
       }
 
@@ -214,8 +422,8 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // sharedLinks: closed. getSharedLinkByToken() lists the whole collection,
-    // which would expose every token. Serve shared views from a server route.
+    // sharedLinks: closed (legacy; nothing reads it). A shared view, if ever
+    // added, must be served from a server route, never a client token scan.
     match /sharedLinks/{linkId} {
       allow read, write: if false;
     }

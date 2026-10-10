@@ -8,9 +8,13 @@ import { getFirestore, type Firestore } from 'firebase-admin/firestore'
  *
  * - With FIREBASE_SERVICE_ACCOUNT_B64 (base64 of the service-account JSON) the
  *   app has full credentials: ID-token verification AND Admin Firestore.
+ *   It is REQUIRED in production: invites, chat, document extraction, export,
+ *   the visit-prep PDF, notifications, cron reminders and account deletion
+ *   all use Admin Firestore/Storage/Messaging.
  * - Without it, the app is initialised with just the project id. That is
- *   enough for `verifyIdToken` (it validates against Google's public certs),
- *   which is all Phase 0 needs. Admin Firestore calls will fail in this mode.
+ *   enough for `verifyIdToken` (it validates against Google's public certs)
+ *   and for the local emulators (the *_EMULATOR_HOST env vars). Against real
+ *   Firebase, Admin Firestore/Storage calls fail in this mode.
  */
 function getAdminApp(): App {
   const existing = getApps()

@@ -4,9 +4,9 @@ import { Header } from '@/components/layout/header'
 import { useLabRecords, getTrendPoints } from '@/lib/hooks/use-lab-records'
 import { useProfile, ageFromDateOfBirth } from '@/lib/hooks/use-profile'
 import { computeAgeGapDeficit, getMedicationInteractions } from '@/lib/calculations/analysis'
-import { getMedications } from '@/lib/firebase/firestore'
-import { usePatient } from '@/components/providers/patient-provider'
-import { useEffect, useState } from 'react'
+import { useMedications } from '@/lib/hooks/use-medications'
+import { useTargets } from '@/lib/hooks/use-targets'
+import { formatRange, isInRange, resolveRange, type ResolvedRange, type TargetMap } from '@/lib/calculations/targets'
 import { linearRegression } from '@/lib/calculations/trends'
 import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
 import { CardSkeleton } from '@/components/ui/skeleton'
@@ -42,13 +42,26 @@ function computeStats(points: { date: string; value: number }[]) {
   return { min, max, avg, count: values.length, slope }
 }
 
-function generateFindings(records: LabRecord[], medications: Medication[], age: number | null): Finding[] {
+/** "your target 5–8" / "the lab range 0.7–1.3" for finding text. */
+function rangePhrase(r: ResolvedRange, unit: string): string {
+  const who = r.source === 'target' ? `your target${r.target?.setBy ? ` (set by ${r.target.setBy})` : ''}` : r.source === 'record' ? 'the lab range' : 'the reference range'
+  return `${who} of ${formatRange(r)}${unit ? ` ${unit}` : ''}`
+}
+
+function generateFindings(
+  records: LabRecord[],
+  medications: Medication[],
+  age: number | null,
+  targets: TargetMap = {}
+): Finding[] {
   if (records.length < 2) return []
 
   const findings: Finding[] = []
   const latest = records[records.length - 1]
 
   const getVal = (name: string) => latest.values.find((v) => v.testName === name)?.value
+  // Patient target > range printed on the latest report > default (see lib/calculations/targets.ts).
+  const rangeFor = (name: string) => resolveRange(name, latest.values.find((v) => v.testName === name), targets)
   const getPoints = (name: string) => getTrendPoints(records, name)
 
   // --- Creatinine ---
@@ -56,13 +69,15 @@ function generateFindings(records: LabRecord[], medications: Medication[], age: 
   const crVals = getPoints('Creatinine')
   const crSt = computeStats(crVals)
 
-  if (cr != null && crSt) {
+  const crRange = rangeFor('Creatinine')
+  if (cr != null && crSt && crRange) {
+    const crOk = isInRange(cr, crRange)
     const vol = ((crSt.max - crSt.min) / crSt.avg * 100).toFixed(1)
     findings.push({
-      type: cr <= 1.3 ? 'good' : 'alert',
+      type: crOk ? 'good' : 'alert',
       cat: 'Kidney',
       title: `Creatinine: ${cr} mg/dL`,
-      detail: `Range over ${crSt.count} readings: ${crSt.min}–${crSt.max} mg/dL (volatility: ${vol}%). Trajectory: ${crSt.slope != null && crSt.slope > 0.01 ? 'gradually rising ↗' : crSt.slope != null && crSt.slope < -0.01 ? 'improving ↘' : 'stable →'}. ${cr <= 1.3 ? 'Within normal limits.' : 'Above 1.3 — discuss with nephrologist.'}`,
+      detail: `Range over ${crSt.count} readings: ${crSt.min}–${crSt.max} mg/dL (volatility: ${vol}%). Trajectory: ${crSt.slope != null && crSt.slope > 0.01 ? 'gradually rising ↗' : crSt.slope != null && crSt.slope < -0.01 ? 'improving ↘' : 'stable →'}. ${crOk ? `Within ${rangePhrase(crRange, 'mg/dL')}.` : `Outside ${rangePhrase(crRange, 'mg/dL')} — discuss with nephrologist.`}`,
       metrics: [
         { l: 'Current', v: cr, u: 'mg/dL' },
         { l: '18-mo Avg', v: crSt.avg.toFixed(2), u: 'mg/dL' },
@@ -77,6 +92,9 @@ function generateFindings(records: LabRecord[], medications: Medication[], age: 
   const egfrVals = getPoints('eGFR')
   const egfrSt = computeStats(egfrVals)
 
+  const egfrRange = rangeFor('eGFR')
+  // eGFR is judged on its lower bound only (higher is better) unless a target sets a maximum.
+  const egfrFloor = egfrRange?.min ?? 60
   if (egfr != null && egfrSt && egfrSt.count >= 2) {
     const stg = egfr >= 90 ? 'G1' : egfr >= 60 ? 'G2' : egfr >= 45 ? 'G3a' : egfr >= 30 ? 'G3b' : egfr >= 15 ? 'G4' : 'G5'
     // Age-gap only when we know the patient's age (from profile DOB)
@@ -92,10 +110,10 @@ function generateFindings(records: LabRecord[], medications: Medication[], age: 
       ageMetric = [{ l: 'Age Gap', v: deficit > 0 ? `-${pct}%` : '0%', u: '' }]
     }
     findings.push({
-      type: egfr >= 60 ? 'info' : 'alert',
+      type: egfr >= egfrFloor ? 'info' : 'alert',
       cat: 'Kidney',
       title: `eGFR: Stage ${stg} — ${egfr} mL/min`,
-      detail: `${ageSentence}Over ${egfrSt.count} readings: lowest ${egfrSt.min}, best ${egfrSt.max}. ${egfrSt.slope != null && egfrSt.slope > 0 ? 'Upward trajectory is encouraging.' : 'Monitor closely.'}`,
+      detail: `${ageSentence}${egfrRange?.source === 'target' ? `${egfr >= egfrFloor ? 'At or above' : 'Below'} your target of ≥ ${egfrFloor}. ` : ''}Over ${egfrSt.count} readings: lowest ${egfrSt.min}, best ${egfrSt.max}. ${egfrSt.slope != null && egfrSt.slope > 0 ? 'Upward trajectory is encouraging.' : 'Monitor closely.'}`,
       metrics: [
         { l: 'Current', v: egfr, u: 'mL/min' },
         ...ageMetric,
@@ -112,12 +130,12 @@ function generateFindings(records: LabRecord[], medications: Medication[], age: 
 
   if (tac != null && tacSt) {
     const cv = ((tacSt.max - tacSt.min) / tacSt.avg * 100).toFixed(0)
-    const tacRef = REFERENCE_RANGES['Tacrolimus']
+    const tacRange = rangeFor('Tacrolimus') ?? { min: REFERENCE_RANGES['Tacrolimus'].min, max: REFERENCE_RANGES['Tacrolimus'].max, source: 'default' as const }
     findings.push({
-      type: tac >= tacRef.min && tac <= tacRef.max ? 'good' : 'warning',
+      type: isInRange(tac, tacRange) ? 'good' : 'warning',
       cat: 'Immunosuppression',
       title: `Tacrolimus: ${tac} ng/mL`,
-      detail: `Range: ${tacSt.min}–${tacSt.max} ng/mL across ${tacSt.count} readings (CV: ${cv}%). For stable grafts >6 months, <5 may suffice.`,
+      detail: `Range: ${tacSt.min}–${tacSt.max} ng/mL across ${tacSt.count} readings (CV: ${cv}%). ${isInRange(tac, tacRange) ? 'Within' : 'Outside'} ${rangePhrase(tacRange, 'ng/mL')}.${tacRange.source === 'target' ? '' : ' Your doctor may set a different target; add it under Targets.'}`,
       metrics: [
         { l: 'Current', v: tac, u: 'ng/mL' },
         { l: 'CV', v: cv + '%', u: '' },
@@ -134,16 +152,18 @@ function generateFindings(records: LabRecord[], medications: Medication[], age: 
 
   if (k != null && kSt) {
     const kPoints = kVals
-    const above = kPoints.filter((v) => v.value > 5.1).length
-    const high = kPoints.filter((v) => v.value >= 4.8).length
+    const kMax = rangeFor('Potassium')?.max ?? 5.1
+    const kHighNormal = Math.round((kMax - 0.3) * 10) / 10
+    const above = kPoints.filter((v) => v.value > kMax).length
+    const high = kPoints.filter((v) => v.value >= kHighNormal).length
     findings.push({
-      type: k > 5.1 ? 'alert' : k >= 4.8 ? 'warning' : 'good',
+      type: k > kMax ? 'alert' : k >= kHighNormal ? 'warning' : 'good',
       cat: 'Electrolytes',
-      title: `Potassium: ${k} mmol/L`,
-      detail: `Out of ${kSt.count} readings, K⁺ exceeded 5.1 on ${above} occasion(s) and was ≥4.8 on ${high}. ${k > 5.1 ? 'Current level above range — dietary restriction recommended.' : 'Trending high-normal.'}`,
+      title: `Potassium: ${k} mEq/L`,
+      detail: `Out of ${kSt.count} readings, K⁺ exceeded ${kMax} on ${above} occasion(s) and was ≥${kHighNormal} on ${high}. ${k > kMax ? 'Current level above range — dietary restriction recommended.' : k >= kHighNormal ? 'Trending high-normal.' : 'Current level is comfortably within range.'}`,
       metrics: [
-        { l: 'Current', v: k, u: 'mmol/L' },
-        { l: 'Times >5.1', v: `${above}/${kSt.count}`, u: '' },
+        { l: 'Current', v: k, u: 'mEq/L' },
+        { l: `Times >${kMax}`, v: `${above}/${kSt.count}`, u: '' },
         { l: 'Average', v: kSt.avg.toFixed(2), u: '' },
         { l: 'Range', v: `${kSt.min}–${kSt.max}`, u: '' },
       ],
@@ -241,26 +261,10 @@ const TYPE_COLORS = {
 export default function AnalysisPage() {
   const { records, loading } = useLabRecords()
   const { profile } = useProfile()
-  const { pid } = usePatient()
-  const [medications, setMedications] = useState<Medication[]>([])
+  const { medications } = useMedications()
+  const { targetMap, loading: targetsLoading } = useTargets()
 
-  useEffect(() => {
-    setMedications([])
-    if (!pid) return
-    let cancelled = false
-    getMedications(pid)
-      .then((meds) => {
-        if (!cancelled) setMedications(meds)
-      })
-      .catch(() => {
-        if (!cancelled) setMedications([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [pid])
-
-  if (loading) {
+  if (loading || targetsLoading) {
     return (
       <>
         <Header title="Deep Analysis" emphasis="Deep" />
@@ -284,7 +288,7 @@ export default function AnalysisPage() {
 
   const latest = records[records.length - 1]
   const egfr = latest.values.find((v) => v.testName === 'eGFR')?.value
-  const findings = generateFindings(records, medications, ageFromDateOfBirth(profile?.dateOfBirth))
+  const findings = generateFindings(records, medications, ageFromDateOfBirth(profile?.dateOfBirth), targetMap)
 
   return (
     <>
