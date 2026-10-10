@@ -1,7 +1,8 @@
-import { PERSONAL_DATA } from '@personal-data'
+import { PERSONAL_DATA } from '@/lib/personal/sample'
 
 /**
- * Records written to Firestore on first login (see use-lab-records.ts).
- * Real data lives in the gitignored lib/personal/local.ts; synthetic fallback in sample.ts.
+ * Synthetic demo records (never real patient data). Written to Firestore only
+ * when the user clicks "Load demo data" on the dashboard and
+ * NEXT_PUBLIC_ENABLE_DEMO=1. Client code must never import the personal-data alias.
  */
 export const SEED_RECORDS = PERSONAL_DATA.seedRecords

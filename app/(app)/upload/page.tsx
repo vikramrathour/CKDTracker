@@ -7,6 +7,7 @@ import { Header } from '@/components/layout/header'
 import { useAuth } from '@/components/providers/auth-provider'
 import { useLabRecords } from '@/lib/hooks/use-lab-records'
 import { addLabRecord } from '@/lib/firebase/firestore'
+import { apiFetch } from '@/lib/api/client'
 import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
 import { Upload, FileText, Check, AlertCircle, Pencil } from 'lucide-react'
 import type { LabValue } from '@/lib/types/lab-record'
@@ -38,11 +39,16 @@ export default function UploadPage() {
       const formData = new FormData()
       formData.append('file', file)
 
-      const res = await fetch('/api/pdf/parse', { method: 'POST', body: formData })
-      const data = await res.json()
+      const res = await apiFetch('/api/pdf/parse', { method: 'POST', body: formData })
+      const data = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        setError(data.error || 'Failed to parse PDF')
+        const messages: Record<number, string> = {
+          401: 'Your session has expired. Please sign in again.',
+          413: 'This file is too large. The maximum size is 10 MB.',
+          415: 'Only PDF files are supported.',
+        }
+        setError(messages[res.status] || data.error || 'Failed to parse PDF')
         setStep('error')
         return
       }
@@ -58,7 +64,9 @@ export default function UploadPage() {
       setLabName(data.labName || 'Unknown Lab')
       setStep('review')
     } catch (err) {
-      setError('Failed to upload file. Please try again.')
+      setError(err instanceof Error && err.message === 'Not signed in'
+        ? 'You are not signed in. Please sign in again.'
+        : 'Failed to upload file. Please try again.')
       setStep('error')
     }
   }, [])

@@ -12,12 +12,8 @@ const firebaseConfig = {
 }
 
 function getApp(): FirebaseApp | undefined {
-  if (!firebaseConfig.apiKey) {
-    console.log('[Firebase] No API key found, skipping init')
-    return undefined
-  }
+  if (!firebaseConfig.apiKey) return undefined
   if (getApps().length > 0) return getApps()[0]
-  console.log('[Firebase] Initializing app with project:', firebaseConfig.projectId)
   return initializeApp(firebaseConfig)
 }
 
@@ -25,8 +21,6 @@ const app = getApp()
 
 export const auth: Auth | undefined = app ? getAuth(app) : undefined
 export const db: Firestore | undefined = app ? getFirestore(app) : undefined
-
-console.log('[Firebase] App initialized:', !!app, 'Auth:', !!auth, 'DB:', !!db)
 
 // Storage is lazy-loaded via dynamic import
 export async function getStorageInstance() {

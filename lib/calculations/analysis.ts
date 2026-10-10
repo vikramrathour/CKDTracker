@@ -17,7 +17,14 @@ export function determineCKDStage(latestEGFR: number): CKDStageInfo {
       }
     }
   }
-  return CKD_STAGES[CKD_STAGES.length - 1] as unknown as CKDStageInfo
+  // Only reachable for negative/NaN input — treat as stage 5
+  const stage5 = CKD_STAGES[CKD_STAGES.length - 1]
+  return {
+    stage: stage5.stage,
+    label: stage5.label,
+    eGFRRange: '<15',
+    description: stage5.description,
+  }
 }
 
 /**

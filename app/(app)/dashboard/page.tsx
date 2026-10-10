@@ -11,7 +11,14 @@ import { computeHealthScore } from '@/lib/calculations/health-score'
 import { CardSkeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
+import { useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
+import { useAuth } from '@/components/providers/auth-provider'
+import { addLabRecord } from '@/lib/firebase/firestore'
+// Synthetic demo data only — client code must never import the personal-data alias
+import { SEED_RECORDS } from '@/lib/constants/seed-data'
+
+const DEMO_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEMO === '1'
 
 const CRITICAL_TESTS = [
   { testName: 'Creatinine', label: 'Creatinine' },
@@ -21,7 +28,34 @@ const CRITICAL_TESTS = [
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { records, loading } = useLabRecords()
+  const { user } = useAuth()
+  const { records, loading, refetch } = useLabRecords()
+  const [demoLoading, setDemoLoading] = useState(false)
+  const [demoError, setDemoError] = useState<string | null>(null)
+  const demoInFlight = useRef(false)
+
+  async function loadDemoData() {
+    if (!user || demoInFlight.current) return
+    demoInFlight.current = true
+    setDemoLoading(true)
+    setDemoError(null)
+    try {
+      for (const record of SEED_RECORDS) {
+        await addLabRecord(user.uid, {
+          recordDate: new Date(record.recordDate),
+          labName: record.labName,
+          values: record.values,
+        })
+      }
+      await refetch()
+    } catch (err) {
+      console.error('Failed to load demo data:', err)
+      setDemoError('Failed to load demo data')
+    } finally {
+      demoInFlight.current = false
+      setDemoLoading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -49,6 +83,19 @@ export default function DashboardPage() {
           <div className="text-5xl mb-4">🫘</div>
           <div className="text-base font-semibold mb-2">No records yet</div>
           <div className="text-sm text-gray-500">Add your first lab report to see your health dashboard.</div>
+          {DEMO_ENABLED && (
+            <div className="mt-6">
+              <button
+                onClick={loadDemoData}
+                disabled={demoLoading || !user}
+                className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-sm font-semibold shadow-sm disabled:opacity-50"
+              >
+                {demoLoading ? 'Loading demo data…' : 'Load demo data'}
+              </button>
+              <div className="text-[11px] text-gray-400 mt-2">Synthetic sample records, not real results.</div>
+              {demoError && <div className="text-xs text-red-500 mt-2">{demoError}</div>}
+            </div>
+          )}
         </main>
       </>
     )

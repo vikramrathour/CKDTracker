@@ -5,14 +5,26 @@ import { TrendChart } from '@/components/trends/trend-chart'
 import { useLabRecords, getTrendPoints } from '@/lib/hooks/use-lab-records'
 import { ChartSkeleton } from '@/components/ui/skeleton'
 import { formatDate } from '@/lib/utils'
+import { linearRegression } from '@/lib/calculations/trends'
+import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
 
-const KEY_METRICS = [
+const range = (testName: string) => REFERENCE_RANGES[testName]
+
+const KEY_METRICS: {
+  testName: string
+  label: string
+  color: string
+  refLow: number | undefined
+  refHigh: number | null
+  insight: string
+  higherIsBetter: boolean
+}[] = [
   {
     testName: 'Creatinine',
     label: 'Creatinine',
     color: '#ef4444',
-    refLow: 0.9,
-    refHigh: 1.3,
+    refLow: range('Creatinine')?.min,
+    refHigh: range('Creatinine')?.max ?? null,
     insight: 'Kidney filtration marker — lower is better within range',
     higherIsBetter: false,
   },
@@ -20,35 +32,35 @@ const KEY_METRICS = [
     testName: 'eGFR',
     label: 'eGFR',
     color: '#2d6a4f',
-    refLow: 60,
-    refHigh: null,
-    insight: 'Kidney function rate — higher is better, age-expected ~99',
+    refLow: range('eGFR')?.min,
+    refHigh: null, // no upper concern for eGFR
+    insight: 'Kidney function rate — higher is better',
     higherIsBetter: true,
   },
   {
     testName: 'Tacrolimus',
     label: 'Tacrolimus',
     color: '#7c3aed',
-    refLow: 4,
-    refHigh: 10,
-    insight: 'Immunosuppressant level — target 4–10 for stable graft',
+    refLow: range('Tacrolimus')?.min,
+    refHigh: range('Tacrolimus')?.max ?? null,
+    insight: `Immunosuppressant level — target ${range('Tacrolimus')?.min}–${range('Tacrolimus')?.max} ng/mL`,
     higherIsBetter: false,
   },
   {
     testName: 'Potassium',
     label: 'Potassium',
     color: '#e67e22',
-    refLow: 3.5,
-    refHigh: 5.1,
-    insight: 'Electrolyte — elevated by Tacrolimus + Enalapril',
+    refLow: range('Potassium')?.min,
+    refHigh: range('Potassium')?.max ?? null,
+    insight: 'Electrolyte — some transplant medications can raise it',
     higherIsBetter: false,
   },
   {
     testName: 'Hemoglobin',
     label: 'Haemoglobin',
     color: '#2563eb',
-    refLow: 14,
-    refHigh: 18,
+    refLow: range('Hemoglobin')?.min,
+    refHigh: range('Hemoglobin')?.max ?? null,
     insight: 'Oxygen-carrying capacity — stable is good',
     higherIsBetter: true,
   },
@@ -56,12 +68,14 @@ const KEY_METRICS = [
     testName: 'Sodium',
     label: 'Sodium',
     color: '#6b7280',
-    refLow: 136,
-    refHigh: 145,
+    refLow: range('Sodium')?.min,
+    refHigh: range('Sodium')?.max ?? null,
     insight: 'Fluid/electrolyte balance indicator',
     higherIsBetter: false,
   },
 ]
+
+const DAY_MS = 1000 * 60 * 60 * 24
 
 function computeStats(points: { date: string; value: number }[]) {
   if (points.length === 0) return null
@@ -74,15 +88,14 @@ function computeStats(points: { date: string; value: number }[]) {
   const change = prev != null ? last - prev : null
   const changePct = prev != null && prev !== 0 ? ((change! / prev) * 100) : null
 
+  // Date-based regression (x = days since first reading), expressed per 30 days
   let slope: number | null = null
-  if (values.length >= 3) {
-    const n = values.length
-    const xs = values.map((_, i) => i)
-    const sX = xs.reduce((a, b) => a + b, 0)
-    const sY = values.reduce((a, b) => a + b, 0)
-    const sXY = xs.reduce((a, x, i) => a + x * values[i], 0)
-    const sX2 = xs.reduce((a, x) => a + x * x, 0)
-    slope = (n * sXY - sX * sY) / (n * sX2 - sX * sX)
+  if (points.length >= 3) {
+    const t0 = new Date(points[0].date).getTime()
+    const { slope: perDay } = linearRegression(
+      points.map((p) => ({ x: (new Date(p.date).getTime() - t0) / DAY_MS, y: p.value }))
+    )
+    slope = perDay * 30
   }
 
   return { min, max, avg, last, count: values.length, slope, change, changePct }

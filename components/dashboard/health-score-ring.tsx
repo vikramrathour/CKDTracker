@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { getScoreColor } from '@/lib/calculations/health-score'
 
 interface HealthScoreRingProps {
-  score: number
+  /** null = not measured; renders an empty ring with an em dash */
+  score: number | null
   size?: number
   label?: string
   strokeWidth?: number
@@ -14,10 +15,10 @@ export function HealthScoreRing({ score, size = 72, label, strokeWidth = 4 }: He
   const [animatedScore, setAnimatedScore] = useState(0)
   const radius = (size - strokeWidth * 2) / 2
   const circumference = 2 * Math.PI * radius
-  const color = getScoreColor(score)
+  const color = score == null ? '#9ca3af' : getScoreColor(score)
 
   useEffect(() => {
-    const timer = setTimeout(() => setAnimatedScore(score), 50)
+    const timer = setTimeout(() => setAnimatedScore(score ?? 0), 50)
     return () => clearTimeout(timer)
   }, [score])
 
@@ -53,7 +54,7 @@ export function HealthScoreRing({ score, size = 72, label, strokeWidth = 4 }: He
           className="font-mono font-bold"
           style={{ fontSize: size > 50 ? 18 : 13, color }}
         >
-          {Math.round(pct)}
+          {score == null ? '—' : Math.round(pct)}
         </span>
         {label && (
           <span className="text-[7px] text-gray-400 uppercase tracking-wider">

@@ -15,9 +15,15 @@ export function SystemScores({ scores }: { scores: HealthScore['systems'] }) {
   return (
     <div className="flex gap-2 mt-4">
       {Object.entries(scores).map(([key, value]) => (
-        <div key={key} className="flex-1 text-center">
+        <div
+          key={key}
+          className="flex-1 text-center"
+          title={value == null ? 'Not measured in latest report' : undefined}
+        >
           <HealthScoreRing score={value} size={44} />
-          <div className="text-[8px] text-gray-400 mt-1 uppercase tracking-wider">
+          <div
+            className={`text-[8px] mt-1 uppercase tracking-wider ${value == null ? 'text-gray-300' : 'text-gray-400'}`}
+          >
             {SYSTEM_LABELS[key] || key}
           </div>
         </div>

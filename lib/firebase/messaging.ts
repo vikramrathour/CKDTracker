@@ -2,7 +2,7 @@ import { getMessaging, getToken, onMessage, type MessagePayload } from 'firebase
 import app from './config'
 
 function getMessagingInstance() {
-  if (typeof window === 'undefined') return null
+  if (typeof window === 'undefined' || !app) return null
   return getMessaging(app)
 }
 

@@ -1,11 +1,12 @@
+/** Scores are 0–100, or null when the record has no values for that system. */
 export interface HealthScore {
-  overall: number
+  overall: number | null
   systems: {
-    kidney: number
-    immunosuppression: number
-    electrolytes: number
-    hemogram: number
-    lipid: number
+    kidney: number | null
+    immunosuppression: number | null
+    electrolytes: number | null
+    hemogram: number | null
+    lipid: number | null
   }
 }
 

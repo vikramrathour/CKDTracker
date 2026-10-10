@@ -2,12 +2,17 @@
 
 import { Header } from '@/components/layout/header'
 import { useLabRecords, getTrendPoints } from '@/lib/hooks/use-lab-records'
-import { computeHealthScore } from '@/lib/calculations/health-score'
-import { determineCKDStage, computeVolatility } from '@/lib/calculations/analysis'
+import { useProfile, ageFromDateOfBirth } from '@/lib/hooks/use-profile'
+import { computeAgeGapDeficit, getMedicationInteractions } from '@/lib/calculations/analysis'
+import { getMedications } from '@/lib/firebase/firestore'
+import { useAuth } from '@/components/providers/auth-provider'
+import { useEffect, useState } from 'react'
+import { linearRegression } from '@/lib/calculations/trends'
+import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
 import { CardSkeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { DOCTOR_NAME } from '@/lib/constants/medications'
 import type { LabRecord } from '@/lib/types/lab-record'
+import type { Medication } from '@/lib/types/medication'
 
 interface Finding {
   type: 'alert' | 'warning' | 'good' | 'info'
@@ -17,32 +22,34 @@ interface Finding {
   metrics: { l: string; v: string | number; u: string }[]
 }
 
-function computeStats(values: number[]) {
-  if (values.length === 0) return null
+const DAY_MS = 1000 * 60 * 60 * 24
+
+/** Stats over dated points; slope is a date-based regression expressed per 30 days. */
+function computeStats(points: { date: string; value: number }[]) {
+  if (points.length === 0) return null
+  const values = points.map((p) => p.value)
   const min = Math.min(...values)
   const max = Math.max(...values)
   const avg = values.reduce((s, v) => s + v, 0) / values.length
   let slope: number | null = null
-  if (values.length >= 3) {
-    const n = values.length
-    const xs = values.map((_, i) => i)
-    const sX = xs.reduce((a, b) => a + b, 0)
-    const sY = values.reduce((a, b) => a + b, 0)
-    const sXY = xs.reduce((a, x, i) => a + x * values[i], 0)
-    const sX2 = xs.reduce((a, x) => a + x * x, 0)
-    slope = (n * sXY - sX * sY) / (n * sX2 - sX * sX)
+  if (points.length >= 3) {
+    const t0 = new Date(points[0].date).getTime()
+    const { slope: perDay } = linearRegression(
+      points.map((p) => ({ x: (new Date(p.date).getTime() - t0) / DAY_MS, y: p.value }))
+    )
+    slope = perDay * 30
   }
   return { min, max, avg, count: values.length, slope }
 }
 
-function generateFindings(records: LabRecord[]): Finding[] {
+function generateFindings(records: LabRecord[], medications: Medication[], age: number | null): Finding[] {
   if (records.length < 2) return []
 
   const findings: Finding[] = []
   const latest = records[records.length - 1]
 
   const getVal = (name: string) => latest.values.find((v) => v.testName === name)?.value
-  const getPoints = (name: string) => getTrendPoints(records, name).map((p) => p.value)
+  const getPoints = (name: string) => getTrendPoints(records, name)
 
   // --- Creatinine ---
   const cr = getVal('Creatinine')
@@ -72,15 +79,26 @@ function generateFindings(records: LabRecord[]): Finding[] {
 
   if (egfr != null && egfrSt && egfrSt.count >= 2) {
     const stg = egfr >= 90 ? 'G1' : egfr >= 60 ? 'G2' : egfr >= 45 ? 'G3a' : egfr >= 30 ? 'G3b' : egfr >= 15 ? 'G4' : 'G5'
-    const def = ((99 - egfr) / 99 * 100).toFixed(0)
+    // Age-gap only when we know the patient's age (from profile DOB)
+    let ageSentence = ''
+    let ageMetric: Finding['metrics'] = [{ l: 'Average', v: egfrSt.avg.toFixed(0), u: '' }]
+    if (age != null) {
+      const deficit = computeAgeGapDeficit(egfr, age)
+      const expected = egfr + deficit
+      const pct = expected > 0 ? Math.round((deficit / expected) * 100) : 0
+      ageSentence = deficit > 0
+        ? `Age-expected eGFR is ~${expected}. Your current reading is ${pct}% below that. `
+        : `Your current reading is at or above the age-expected ~${expected}. `
+      ageMetric = [{ l: 'Age Gap', v: deficit > 0 ? `-${pct}%` : '0%', u: '' }]
+    }
     findings.push({
       type: egfr >= 60 ? 'info' : 'alert',
       cat: 'Kidney',
       title: `eGFR: Stage ${stg} — ${egfr} mL/min`,
-      detail: `Age-expected eGFR is ~99. Your current reading is ${def}% below that. Over ${egfrSt.count} readings: lowest ${egfrSt.min}, best ${egfrSt.max}. ${egfrSt.slope != null && egfrSt.slope > 0 ? 'Upward trajectory is encouraging.' : 'Monitor closely.'}`,
+      detail: `${ageSentence}Over ${egfrSt.count} readings: lowest ${egfrSt.min}, best ${egfrSt.max}. ${egfrSt.slope != null && egfrSt.slope > 0 ? 'Upward trajectory is encouraging.' : 'Monitor closely.'}`,
       metrics: [
         { l: 'Current', v: egfr, u: 'mL/min' },
-        { l: 'Age Gap', v: `-${def}%`, u: '' },
+        ...ageMetric,
         { l: 'Lowest', v: egfrSt.min, u: '' },
         { l: 'Best', v: egfrSt.max, u: '' },
       ],
@@ -94,8 +112,9 @@ function generateFindings(records: LabRecord[]): Finding[] {
 
   if (tac != null && tacSt) {
     const cv = ((tacSt.max - tacSt.min) / tacSt.avg * 100).toFixed(0)
+    const tacRef = REFERENCE_RANGES['Tacrolimus']
     findings.push({
-      type: tac >= 3 && tac <= 10 ? 'good' : 'warning',
+      type: tac >= tacRef.min && tac <= tacRef.max ? 'good' : 'warning',
       cat: 'Immunosuppression',
       title: `Tacrolimus: ${tac} ng/mL`,
       detail: `Range: ${tacSt.min}–${tacSt.max} ng/mL across ${tacSt.count} readings (CV: ${cv}%). For stable grafts >6 months, <5 may suffice.`,
@@ -114,14 +133,14 @@ function generateFindings(records: LabRecord[]): Finding[] {
   const kSt = computeStats(kVals)
 
   if (k != null && kSt) {
-    const kPoints = getTrendPoints(records, 'Potassium')
+    const kPoints = kVals
     const above = kPoints.filter((v) => v.value > 5.1).length
     const high = kPoints.filter((v) => v.value >= 4.8).length
     findings.push({
       type: k > 5.1 ? 'alert' : k >= 4.8 ? 'warning' : 'good',
       cat: 'Electrolytes',
       title: `Potassium: ${k} mmol/L`,
-      detail: `Out of ${kSt.count} readings, K⁺ exceeded 5.1 on ${above} occasion(s) and was ≥4.8 on ${high}. Tacrolimus + Enalapril both elevate K⁺. ${k > 5.1 ? 'Current level above range — dietary restriction recommended.' : 'Trending high-normal.'}`,
+      detail: `Out of ${kSt.count} readings, K⁺ exceeded 5.1 on ${above} occasion(s) and was ≥4.8 on ${high}. ${k > 5.1 ? 'Current level above range — dietary restriction recommended.' : 'Trending high-normal.'}`,
       metrics: [
         { l: 'Current', v: k, u: 'mmol/L' },
         { l: 'Times >5.1', v: `${above}/${kSt.count}`, u: '' },
@@ -161,7 +180,7 @@ function generateFindings(records: LabRecord[]): Finding[] {
       type: hdl < 40 ? 'alert' : 'good',
       cat: 'Lipids',
       title: 'Cardiovascular lipid profile',
-      detail: `HDL ${hdl} mg/dL ${hdl < 40 ? '(below protective threshold of 40)' : '(adequate)'}. LDL ${ldl ?? '—'} ${ldl != null && ldl <= 100 ? '(optimal)' : '(borderline)'}. TG ${tg ?? '—'} ${tg != null && tg <= 150 ? '(normal)' : '(borderline high)'}. Low HDL likely influenced by Prednisolone and CKD.`,
+      detail: `HDL ${hdl} mg/dL ${hdl < 40 ? '(below protective threshold of 40)' : '(adequate)'}. LDL ${ldl ?? '—'} ${ldl != null && ldl <= 100 ? '(optimal)' : '(borderline)'}. TG ${tg ?? '—'} ${tg != null && tg <= 150 ? '(normal)' : '(borderline high)'}.`,
       metrics: [
         { l: 'HDL', v: hdl, u: 'mg/dL' },
         { l: 'LDL', v: ldl ?? '—', u: 'mg/dL' },
@@ -178,29 +197,26 @@ function generateFindings(records: LabRecord[]): Finding[] {
       type: uprot.value === 0 ? 'good' : 'alert',
       cat: 'Urine',
       title: `Protein ${uprot.value === 0 ? 'Absent' : 'Detected'}`,
-      detail: `${uprot.value === 0 ? 'No proteinuria — graft filtering well.' : 'Protein detected — may indicate graft stress.'} Dapagliflozin (SGLT2i) causes expected glucosuria — this is renoprotective, not uncontrolled diabetes.`,
+      detail: `${uprot.value === 0 ? 'No proteinuria — graft filtering well.' : 'Protein detected — may indicate graft stress.'}`,
       metrics: [
         { l: 'Protein', v: uprot.value === 0 ? 'Absent' : 'Present', u: '' },
-        { l: 'Glucose', v: 'Expected (SGLT2i)', u: '' },
         { l: 'Sp.Grav', v: getVal('Specific Gravity') ?? '—', u: '' },
         { l: 'pH', v: getVal('Urine pH') ?? '—', u: '' },
       ],
     })
   }
 
-  // --- Drug-Lab Interactions ---
-  findings.push({
-    type: 'info',
-    cat: 'Drug-Lab Interactions',
-    title: 'Medication effects on lab values',
-    detail: 'Three medications directly affect lab readings: Tacrolimus and Enalapril both raise potassium, Dapagliflozin causes glucosuria by design, and Prednisolone elevates triglycerides while lowering HDL.',
-    metrics: [
-      { l: 'Tac→K⁺↑', v: 'Hyperkalemia', u: '' },
-      { l: 'Dapa→Glu↑', v: 'Glucosuria', u: '' },
-      { l: 'Pred→TG↑', v: 'Dyslipidemia', u: '' },
-      { l: 'Enal→K⁺↑', v: 'Additive', u: '' },
-    ],
-  })
+  // --- Drug-Lab Interactions (from the user's own active medications) ---
+  const interactions = getMedicationInteractions(medications, latest.values)
+  if (interactions.length > 0) {
+    findings.push({
+      type: interactions.some((i) => i.severity === 'high') ? 'warning' : 'info',
+      cat: 'Drug-Lab Interactions',
+      title: 'Medication effects on lab values',
+      detail: interactions.map((i) => `${i.medication} → ${i.affectedTest}: ${i.effect}.`).join(' '),
+      metrics: interactions.slice(0, 4).map((i) => ({ l: `${i.medication} → ${i.affectedTest}`, v: i.severity, u: '' })),
+    })
+  }
 
   return findings
 }
@@ -223,6 +239,14 @@ const TYPE_COLORS = {
 
 export default function AnalysisPage() {
   const { records, loading } = useLabRecords()
+  const { profile } = useProfile()
+  const { user } = useAuth()
+  const [medications, setMedications] = useState<Medication[]>([])
+
+  useEffect(() => {
+    if (!user) return
+    getMedications(user.uid).then(setMedications).catch(() => setMedications([]))
+  }, [user])
 
   if (loading) {
     return (
@@ -248,7 +272,7 @@ export default function AnalysisPage() {
 
   const latest = records[records.length - 1]
   const egfr = latest.values.find((v) => v.testName === 'eGFR')?.value
-  const findings = generateFindings(records)
+  const findings = generateFindings(records, medications, ageFromDateOfBirth(profile?.dateOfBirth))
 
   return (
     <>
@@ -316,7 +340,7 @@ export default function AnalysisPage() {
         })}
 
         <div className="mt-2 p-3.5 bg-gray-50 rounded-lg text-[11px] text-gray-400 text-center leading-relaxed">
-          For tracking only. Always discuss results with {DOCTOR_NAME}.
+          For tracking only. Always discuss results with {profile?.doctorName || 'your transplant team'}.
         </div>
       </main>
     </>

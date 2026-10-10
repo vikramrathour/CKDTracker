@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import type { User } from 'firebase/auth'
-import { onAuthStateChanged, signInWithGoogle, signOut } from '@/lib/firebase/auth'
+import { onAuthStateChanged, signInWithGoogle, signOut, ensureUserProfile } from '@/lib/firebase/auth'
 
 interface AuthContext {
   user: User | null
@@ -23,9 +23,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    console.log('[AuthProvider] Setting up onAuthStateChanged listener')
     const unsubscribe = onAuthStateChanged((u) => {
-      console.log('[AuthProvider] Auth state changed:', u ? u.email : 'null')
+      if (u) {
+        ensureUserProfile(u).catch((err) => console.error('Failed to create user profile:', err))
+      }
       setUser(u)
       setLoading(false)
     })

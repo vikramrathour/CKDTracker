@@ -25,9 +25,10 @@ function scoreValue(val: LabValue): number {
 
 /**
  * Compute the weighted average health score for a set of lab values.
+ * Returns null when there are no values (system not measured).
  */
-function weightedScore(values: LabValue[]): number {
-  if (values.length === 0) return 0
+function weightedScore(values: LabValue[]): number | null {
+  if (values.length === 0) return null
 
   let totalWeight = 0
   let totalScore = 0
@@ -39,7 +40,7 @@ function weightedScore(values: LabValue[]): number {
     totalScore += scoreValue(val) * weight
   }
 
-  return totalWeight > 0 ? Math.round(totalScore / totalWeight) : 0
+  return totalWeight > 0 ? Math.round(totalScore / totalWeight) : null
 }
 
 /**
@@ -53,7 +54,7 @@ export function computeHealthScore(values: LabValue[]): HealthScore {
     byPanel[val.panel].push(val)
   }
 
-  const systems = {
+  const systems: HealthScore['systems'] = {
     kidney: weightedScore(byPanel['kidney'] || []),
     immunosuppression: weightedScore(byPanel['tacrolimus'] || []),
     electrolytes: weightedScore(byPanel['electrolytes'] || []),
@@ -61,19 +62,20 @@ export function computeHealthScore(values: LabValue[]): HealthScore {
     lipid: weightedScore(byPanel['lipid'] || []),
   }
 
-  // Overall score is the weighted average of system scores
-  // Kidney and immunosuppression weigh more
+  // Overall score is the weighted average of the systems that were measured
+  // (weights renormalized over present systems). Kidney and immunosuppression weigh more.
   const systemWeights = { kidney: 3, immunosuppression: 3, electrolytes: 2, hemogram: 2, lipid: 1 }
   let totalWeight = 0
   let totalScore = 0
   for (const [sys, score] of Object.entries(systems)) {
+    if (score == null) continue
     const w = systemWeights[sys as keyof typeof systemWeights] || 1
     totalWeight += w
     totalScore += score * w
   }
 
   return {
-    overall: totalWeight > 0 ? Math.round(totalScore / totalWeight) : 0,
+    overall: totalWeight > 0 ? Math.round(totalScore / totalWeight) : null,
     systems,
   }
 }

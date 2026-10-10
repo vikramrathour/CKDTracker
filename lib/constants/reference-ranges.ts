@@ -25,7 +25,9 @@ export const REFERENCE_RANGES: Record<string, ReferenceRange> = {
 
   // Kidney Function
   'Creatinine': { min: 0.7, max: 1.3, unit: 'mg/dL', panel: 'kidney', label: 'Creatinine', weight: 10 },
-  'eGFR': { min: 90, max: 120, unit: 'mL/min/1.73m²', panel: 'kidney', label: 'eGFR', higherIsBetter: true, weight: 10 },
+  // eGFR min is 60 rather than the general-population 90: for transplant recipients a
+  // single kidney at 60+ is a good result. Per-patient targets will replace this later.
+  'eGFR': { min: 60, max: 120, unit: 'mL/min/1.73m²', panel: 'kidney', label: 'eGFR', higherIsBetter: true, weight: 10 },
   'BUN': { min: 7, max: 20, unit: 'mg/dL', panel: 'kidney', label: 'Blood Urea Nitrogen', weight: 7 },
   'Urea': { min: 15, max: 43, unit: 'mg/dL', panel: 'kidney', label: 'Urea', weight: 6 },
   'Uric Acid': { min: 3.5, max: 7.2, unit: 'mg/dL', panel: 'kidney', label: 'Uric Acid', weight: 5 },

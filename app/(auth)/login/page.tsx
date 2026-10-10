@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Heart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -13,10 +13,9 @@ export default function LoginPage() {
   const [error, setError] = useState('')
 
   // Redirect if already signed in
-  if (user) {
-    router.replace('/dashboard')
-    return null
-  }
+  useEffect(() => {
+    if (user) router.replace('/dashboard')
+  }, [user, router])
 
   async function handleSignIn() {
     setLoading(true)
@@ -31,6 +30,8 @@ export default function LoginPage() {
       setLoading(false)
     }
   }
+
+  if (user) return null
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 text-center">

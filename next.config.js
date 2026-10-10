@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // PDF parse requires this for server-side usage
+  // Server-only packages that must not be bundled by webpack
   experimental: {
-    serverComponentsExternalPackages: ['pdf-parse'],
+    serverComponentsExternalPackages: ['pdf-parse', 'firebase-admin'],
   },
 }
 

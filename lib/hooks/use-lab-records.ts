@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/components/providers/auth-provider'
-import { getLabRecords, addLabRecord } from '@/lib/firebase/firestore'
-import { SEED_RECORDS } from '@/lib/constants/seed-data'
+import { getLabRecords } from '@/lib/firebase/firestore'
 import type { LabRecord } from '@/lib/types/lab-record'
 
 export function useLabRecords() {
@@ -22,22 +21,7 @@ export function useLabRecords() {
     try {
       setLoading(true)
       const fetched = await getLabRecords(user.uid)
-
-      if (fetched.length === 0) {
-        // Seed initial data on first login
-        for (const record of SEED_RECORDS) {
-          await addLabRecord(user.uid, {
-            recordDate: new Date(record.recordDate),
-            labName: record.labName,
-            values: record.values,
-          })
-        }
-        // Re-fetch after seeding
-        const seeded = await getLabRecords(user.uid)
-        setRecords(seeded.sort((a, b) => a.recordDate.localeCompare(b.recordDate)))
-      } else {
-        setRecords(fetched.sort((a, b) => a.recordDate.localeCompare(b.recordDate)))
-      }
+      setRecords(fetched.sort((a, b) => a.recordDate.localeCompare(b.recordDate)))
       setError(null)
     } catch (err) {
       console.error('Failed to fetch lab records:', err)
