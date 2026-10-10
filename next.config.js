@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Lets several dev servers run side by side from one checkout (e.g. NEXT_DIST_DIR=.next-a)
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+
   // Server-only packages that must not be bundled by webpack
   serverExternalPackages: ['pdf-parse', 'firebase-admin'],
 
