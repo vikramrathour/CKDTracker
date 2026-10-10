@@ -1,41 +1,24 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useAuth } from '@/components/providers/auth-provider'
-import { getLabRecords } from '@/lib/firebase/firestore'
+import { usePatient } from '@/components/providers/patient-provider'
 import type { LabRecord } from '@/lib/types/lab-record'
 
-export function useLabRecords() {
-  const { user } = useAuth()
-  const [records, setRecords] = useState<LabRecord[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+// Records arrive through PatientProvider's realtime subscription, so there is
+// nothing to refetch; kept so callers can still `await refetch()`.
+const refetch = async () => {}
 
-  const fetchRecords = useCallback(async () => {
-    if (!user) {
-      setRecords([])
-      setLoading(false)
-      return
-    }
-
-    try {
-      setLoading(true)
-      const fetched = await getLabRecords(user.uid)
-      setRecords(fetched.sort((a, b) => a.recordDate.localeCompare(b.recordDate)))
-      setError(null)
-    } catch (err) {
-      console.error('Failed to fetch lab records:', err)
-      setError('Failed to load records')
-    } finally {
-      setLoading(false)
-    }
-  }, [user])
-
-  useEffect(() => {
-    fetchRecords()
-  }, [fetchRecords])
-
-  return { records, loading, error, refetch: fetchRecords }
+/**
+ * The active patient's lab records, sorted ascending by recordDate.
+ * Backed by one onSnapshot subscription in PatientProvider (shared by all pages).
+ */
+export function useLabRecords(): {
+  records: LabRecord[]
+  loading: boolean
+  error: string | null
+  refetch: () => Promise<void>
+} {
+  const { records, recordsLoading, recordsError } = usePatient()
+  return { records, loading: recordsLoading, error: recordsError, refetch }
 }
 
 /**

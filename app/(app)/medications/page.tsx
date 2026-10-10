@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Header } from '@/components/layout/header'
 import { CardSkeleton } from '@/components/ui/skeleton'
-import { useAuth } from '@/components/providers/auth-provider'
+import { usePatient } from '@/components/providers/patient-provider'
 import { useProfile } from '@/lib/hooks/use-profile'
 import { getMedications } from '@/lib/firebase/firestore'
 import type { Medication } from '@/lib/types/medication'
@@ -20,14 +20,14 @@ const CATEGORY_COLORS: Record<string, string> = {
 }
 
 export default function MedicationsPage() {
-  const { user } = useAuth()
+  const { pid } = usePatient()
   const { profile } = useProfile()
   const [medications, setMedications] = useState<Medication[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user) {
+    if (!pid) {
       setMedications([])
       setLoading(false)
       return
@@ -35,7 +35,7 @@ export default function MedicationsPage() {
 
     let cancelled = false
     setLoading(true)
-    getMedications(user.uid)
+    getMedications(pid)
       .then((meds) => {
         if (cancelled) return
         setMedications(meds.filter((m) => m.isActive !== false))
@@ -52,7 +52,7 @@ export default function MedicationsPage() {
     return () => {
       cancelled = true
     }
-  }, [user])
+  }, [pid])
 
   const doctorName = profile?.doctorName
   const doctorHospital = profile?.doctorHospital

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { Header, primaryIconButton } from '@/components/layout/header'
 import { useLabRecords } from '@/lib/hooks/use-lab-records'
-import { useAuth } from '@/components/providers/auth-provider'
+import { usePatient, useCanEdit } from '@/components/providers/patient-provider'
 import { deleteLabRecord } from '@/lib/firebase/firestore'
 import { Badge } from '@/components/ui/badge'
 import { ListSkeleton } from '@/components/ui/skeleton'
@@ -13,16 +13,20 @@ import { useState } from 'react'
 
 export default function RecordsPage() {
   const router = useRouter()
-  const { user } = useAuth()
-  const { records, loading, refetch } = useLabRecords()
+  const { pid } = usePatient()
+  const canEdit = useCanEdit()
+  const { records, loading, error } = useLabRecords()
   const [deleting, setDeleting] = useState<string | null>(null)
 
   const handleDelete = async (id: string) => {
-    if (!user || !confirm('Delete this record?')) return
+    if (!pid || !canEdit || !confirm('Delete this record?')) return
     setDeleting(id)
     try {
-      await deleteLabRecord(user.uid, id)
-      await refetch()
+      // The realtime subscription drops the row once the delete lands.
+      await deleteLabRecord(pid, id)
+    } catch (err) {
+      console.error('Failed to delete record:', err)
+      alert('Could not delete the record. Please try again.')
     } finally {
       setDeleting(null)
     }
@@ -43,20 +47,26 @@ export default function RecordsPage() {
         title="Test History"
         emphasis="History"
         actions={
-          <button
-            type="button"
-            onClick={() => router.push('/records/new')}
-            aria-label="Add record"
-            className={primaryIconButton}
-          >
-            <Plus className="h-5 w-5" />
-          </button>
+          canEdit ? (
+            <button
+              type="button"
+              onClick={() => router.push('/records/new')}
+              aria-label="Add record"
+              className={primaryIconButton}
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+          ) : undefined
         }
       />
       <main className="px-4 py-4">
-        {records.length === 0 ? (
+        {error ? (
+          <p role="alert" className="pt-20 text-center text-[15px] text-critical">{error}</p>
+        ) : records.length === 0 ? (
           <div className="pt-20 text-center">
-            <p className="text-[15px] text-ink-2">No records yet. Add your first lab report.</p>
+            <p className="text-[15px] text-ink-2">
+              {canEdit ? 'No records yet. Add your first lab report.' : 'No records have been added yet.'}
+            </p>
           </div>
         ) : (
           <ul className="border-t border-hair-2">
@@ -86,15 +96,17 @@ export default function RecordsPage() {
                         {record.labName || '—'} · {record.values.length} tests
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(record.id)}
-                      disabled={deleting === record.id}
-                      aria-label="Delete record"
-                      className="-mr-2 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-btn text-lg leading-none text-ink-3 transition-colors hover:bg-critical-pale hover:text-critical disabled:opacity-50"
-                    >
-                      {deleting === record.id ? '...' : '×'}
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(record.id)}
+                        disabled={deleting === record.id}
+                        aria-label="Delete record"
+                        className="-mr-2 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-btn text-lg leading-none text-ink-3 transition-colors hover:bg-critical-pale hover:text-critical disabled:opacity-50"
+                      >
+                        {deleting === record.id ? '...' : '×'}
+                      </button>
+                    )}
                   </div>
 
                   {abnormals.length > 0 && (

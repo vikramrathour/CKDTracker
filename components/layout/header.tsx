@@ -3,6 +3,8 @@
 import Image from 'next/image'
 import { ArrowLeft, Settings } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { usePatient } from '@/components/providers/patient-provider'
+import { PatientSwitcher } from './patient-switcher'
 
 interface HeaderProps {
   title: string
@@ -35,6 +37,11 @@ export const primaryIconButton =
 
 export function Header({ title, emphasis, subtitle, showBack, actions }: HeaderProps) {
   const router = useRouter()
+  const { patients, activePatient } = usePatient()
+  // With more than one profile, always show whose data this is. Pages with a
+  // back button are task screens (add/upload): name shown, but not switchable
+  // mid-task.
+  const multi = patients.length > 1 && activePatient != null
 
   return (
     <header className="glass sticky top-0 z-40 border-b border-hair pt-[env(safe-area-inset-top)]">
@@ -59,7 +66,18 @@ export function Header({ title, emphasis, subtitle, showBack, actions }: HeaderP
             <h1 className="truncate font-serif text-[22px] font-medium leading-tight tracking-[-.02em] text-ink">
               {renderTitle(title, emphasis)}
             </h1>
-            {subtitle && <p className="truncate text-xs leading-tight text-ink-3">{subtitle}</p>}
+            {multi ? (
+              <div className="flex min-w-0 items-center gap-1 text-xs leading-tight text-ink-3">
+                {showBack ? (
+                  <span className="truncate font-semibold text-terra-dk">For {activePatient.displayName}</span>
+                ) : (
+                  <PatientSwitcher className="min-w-0 flex-shrink" />
+                )}
+                {subtitle && <span className="truncate">· {subtitle}</span>}
+              </div>
+            ) : (
+              subtitle && <p className="truncate text-xs leading-tight text-ink-3">{subtitle}</p>
+            )}
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">

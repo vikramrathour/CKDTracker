@@ -5,7 +5,7 @@ import { useLabRecords, getTrendPoints } from '@/lib/hooks/use-lab-records'
 import { useProfile, ageFromDateOfBirth } from '@/lib/hooks/use-profile'
 import { computeAgeGapDeficit, getMedicationInteractions } from '@/lib/calculations/analysis'
 import { getMedications } from '@/lib/firebase/firestore'
-import { useAuth } from '@/components/providers/auth-provider'
+import { usePatient } from '@/components/providers/patient-provider'
 import { useEffect, useState } from 'react'
 import { linearRegression } from '@/lib/calculations/trends'
 import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
@@ -241,13 +241,24 @@ const TYPE_COLORS = {
 export default function AnalysisPage() {
   const { records, loading } = useLabRecords()
   const { profile } = useProfile()
-  const { user } = useAuth()
+  const { pid } = usePatient()
   const [medications, setMedications] = useState<Medication[]>([])
 
   useEffect(() => {
-    if (!user) return
-    getMedications(user.uid).then(setMedications).catch(() => setMedications([]))
-  }, [user])
+    setMedications([])
+    if (!pid) return
+    let cancelled = false
+    getMedications(pid)
+      .then((meds) => {
+        if (!cancelled) setMedications(meds)
+      })
+      .catch(() => {
+        if (!cancelled) setMedications([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pid])
 
   if (loading) {
     return (

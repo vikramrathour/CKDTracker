@@ -1,8 +1,8 @@
 # CKD Tracker
 
-A mobile-first progressive web app for a kidney-transplant patient to keep lab results in one place and watch how they change over time. You can upload a lab report PDF or enter values by hand. The app scores each panel against reference ranges, charts the important markers, and flags values that are drifting.
+A mobile-first progressive web app for kidney-transplant patients, and the family and caregivers who help them, to keep lab results in one place and watch how they change over time. You can upload a lab report PDF or enter values by hand. The app scores each panel against reference ranges, charts the important markers, and flags values that are drifting.
 
-It is built for **one patient**. Most reports come from Metropolis Healthcare (India), and the PDF parser is tuned for that format.
+Each account can track **several people**: your own profile and anyone you care for. Every profile (a *patient*) has its own care circle with owner, editor and viewer roles. Most reports come from Metropolis Healthcare (India), and the PDF parser is tuned for that format.
 
 > **Medical data.** This app stores personal health information. Never commit real lab reports. `reports/` is gitignored for this reason. Use synthetic or redacted data for fixtures, screenshots and issues. The app supports tracking only and is not a diagnostic tool.
 
@@ -18,6 +18,7 @@ It is built for **one patient**. Most reports come from Metropolis Healthcare (I
 - [Lab test vocabulary](#lab-test-vocabulary)
 - [Scoring and analysis](#scoring-and-analysis)
 - [Security](#security)
+- [Phone sign-in setup](#phone-sign-in-setup)
 - [Deployment](#deployment)
 - [Project structure](#project-structure)
 - [Implementation status](#implementation-status)
@@ -31,16 +32,19 @@ It is built for **one patient**. Most reports come from Metropolis Healthcare (I
 | Screen | Route | What it does |
 |---|---|---|
 | Login | `/login` | Google sign-in through Firebase Auth |
+| Onboarding | `/onboarding` | First run, or "Add someone": create a profile for yourself or someone you care for (name, relationship, DOB, transplant date, doctor, hospital, optional tacrolimus target) |
 | Dashboard | `/dashboard` | Overall health score ring, per-system scores, critical-metric cards (Creatinine, eGFR, Tacrolimus) with sparklines and change from the previous report, and a panel overview |
-| Records | `/records` | List of lab reports, with delete |
+| Records | `/records` | List of lab reports, with delete (editors and owners) |
 | New record | `/records/new` | Manual entry form grouped by panel, with reference ranges pre-filled |
-| Upload | `/upload` | Drop in a PDF. The server extracts values, you review them, then save them as a record |
+| Upload | `/upload` | Drop in a PDF. The server extracts values, you review them, then save them as a record. The original PDF is kept in the profile's document vault |
 | Trends | `/trends` | Charts for key markers (Creatinine, eGFR, Tacrolimus, Potassium, Haemoglobin, Sodium) with the reference band shown |
 | Analysis | `/analysis` | CKD stage from eGFR, volatility (SD/CV), times out of range, eGFR compared with the age-expected value |
 | Medications | `/medications` | Active medications from Firestore (no add/edit screen yet, see [status](#implementation-status)) |
 | Settings | `/settings` | Account info, sign out |
 
 Panels tracked are **Hemogram, Kidney Function, Tacrolimus, Electrolytes, Lipid Profile, and Urine Routine**.
+
+When you belong to more than one profile, the header shows whose reports you are looking at and lets you switch. Viewers see everything but get no add, upload or delete controls.
 
 The app is installable as a PWA through the web manifest (`app/manifest.ts`). Offline caching is not wired up yet.
 
@@ -104,8 +108,10 @@ If `NEXT_PUBLIC_FIREBASE_API_KEY` is missing, Firebase skips initialisation and 
 ```bash
 npx firebase-tools login
 npx firebase-tools use <your-project-id>   # .firebaserc pins the default project
-npx firebase-tools deploy --only firestore:rules,storage
+npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage
 ```
+
+The Storage rules read care-circle membership from Firestore, so the first deploy asks to grant the Storage service account access to Firestore: accept it. The `members.uid` collection-group index (`firestore.indexes.json`) takes a few minutes to build; until then the app can't list your profiles.
 
 In the Firebase console, add your local and production hostnames under **Authentication → Settings → Authorized domains**.
 
@@ -115,7 +121,7 @@ In the Firebase console, add your local and production hostnames under **Authent
 npm run dev        # http://localhost:3000
 ```
 
-A new account starts empty. Upload a report or add one manually; with `NEXT_PUBLIC_ENABLE_DEMO=1` you can load synthetic demo records instead. See [Personal data](#personal-data).
+A new account starts at onboarding: create your profile (or one for someone you care for), then upload a report or add one manually; with `NEXT_PUBLIC_ENABLE_DEMO=1` you can load synthetic demo records instead. See [Personal data](#personal-data).
 
 ### Commands
 
@@ -130,9 +136,12 @@ npx tsc --noEmit     # fast type-check without building
 ```bash
 npm test                                      # Vitest, all suites (synthetic data only)
 npx vitest run tests/date.test.ts -t "DD/MM"  # one file / one test
+npm run test:rules                            # security rules + migration against the emulators (needs Java)
 ```
 
 Tests cover the date and Metropolis parsers, scoring, trends, deltas, analysis, and a consistency check across REFERENCE_RANGES, PANELS, the parser patterns and the sample data.
+
+`npm run test:rules` runs `tests/rules/` inside `firebase-tools emulators:exec` with `firebase.test.json` (its own ports, so it works while a dev emulator is running). It covers the Firestore and Storage rules (roles, owner bootstrap, pid squatting, membership queries, chat privacy, append-only activity, legacy read-only paths, upload type and size) and runs the migration script on synthetic data.
 
 ---
 
@@ -176,7 +185,7 @@ Key points:
 
 The repo is public, so patient-specific data stays out of git:
 
-- `lib/personal/local.ts`: **gitignored**, holds the owner's real data. Only the Admin script `scripts/seed-owner.ts` reads it, to import medications and doctor details into Firestore: `npx tsx scripts/seed-owner.ts <uid> --dry-run` (needs `FIREBASE_SERVICE_ACCOUNT_B64`). App code never imports it, so a deploy can't leak it to other users.
+- `lib/personal/local.ts`: **gitignored**, holds the owner's real data. Only the Admin script `scripts/seed-owner.ts` reads it, to import medications and doctor details into your own profile (`patients/{uid}`): `npx tsx scripts/seed-owner.ts <uid> --dry-run` (needs `FIREBASE_SERVICE_ACCOUNT_B64`). Run it after the [migration](#migrating-from-the-single-patient-model). App code never imports it, so a deploy can't leak it to other users.
 - `lib/personal/sample.ts`: committed, synthetic demo data.
 
 The original prototype `kidney-health-tracker.jsx` also contains real data and is gitignored.
@@ -186,15 +195,29 @@ The original prototype `kidney-health-tracker.jsx` also contains real data and i
 ## Data model
 
 ```
-users/{uid}                          profile: fullName, email, dateOfBirth, bloodGroup,
-                                     transplantDate, doctorName, doctorHospital, nextLabDate
-users/{uid}/labRecords/{id}          recordDate (Timestamp), labName, doctorName, notes,
-                                     pdfPath, values: LabValue[], createdAt, updatedAt
-users/{uid}/medications/{id}         name, dose, frequency, category, isActive, …
-sharedLinks/{id}                     token, isActive, expiresAt   (closed by rules)
+users/{uid}                          account: fullName, email, phoneNumber, activePatientId
+users/{uid}/fcmTokens/{token}        push tokens
+patients/{pid}                       ownerUid, displayName, relationship (self|family|other),
+                                     dateOfBirth, transplantDate (YYYY-MM-DD), doctorName, hospital
+  members/{uid}                      uid, role (owner|editor|viewer), displayName, phone, addedBy
+  labRecords/{id}                    recordDate (Timestamp), labName, doctorName, notes, pdfPath,
+                                     values: LabValue[], createdBy, createdAt, updatedAt
+  medications/{id}                   name, dose, frequency, category, isActive, createdBy, …
+    doseHistory/{id}                 dose changes (Phase 6)
+  visits | vitals | documents | questions | targets/{testName} | alertRules
+  activity/{id}                      append-only audit trail
+  chats/{chatId}/messages/{id}       AI chat, written by the server (Phase 5)
+invites/{id}  usage/{id}  sharedLinks/{id}   server-only
 
-Storage: lab-pdfs/{uid}/{timestamp}-{filename}
+Storage: patients/{pid}/documents/{docId}/{file}     (metadata in patients/{pid}/documents/{docId})
+
+Legacy, read-only until the cleanup release:
+users/{uid}/labRecords/{id}  users/{uid}/medications/{id}  lab-pdfs/{uid}/{timestamp}-{file}
 ```
+
+- **Patient ids.** Your own profile uses `pid = uid`. A profile for someone you care for uses `pid = ${uid}_${random}`. The rules refuse any other id, so nobody can claim a pid before its user signs up.
+- **Listing your profiles** is a collection-group query on `members` where `uid == you`, backed by the index override in `firestore.indexes.json`. The app remembers the one you are looking at in `users/{uid}.activePatientId`.
+- **Shared types** for every collection, including the ones later phases fill in, are in `lib/types/patient.ts`, `member.ts` and `care.ts`.
 
 ```ts
 interface LabValue {
@@ -250,17 +273,57 @@ These are heuristics for tracking trends. They are not clinically validated.
 
 | Area | Status |
 |---|---|
-| Firestore rules | Deployed. `users/{uid}/**` is owner-only. `sharedLinks` is fully closed |
-| Storage rules | Deployed. `lab-pdfs/{uid}/**` is owner-only. Uploads must be `application/pdf` and under 20 MB |
+| Firestore rules | Care-circle model (Phase 2, **deploy after the migration**, see below). `users/{uid}` owner-only. `patients/{pid}`: members read; viewers read data, editors write it with `createdBy` = themselves; only the owner changes roles (editor or viewer only); the owner's membership can't be changed or removed; members can leave. Patient creation must include the owner membership in the same batch, on your own pid namespace. Activity is append-only. Chat threads are readable only by their creator and written only by the server. `invites`, `usage`, `sharedLinks` are closed. Legacy `users/{uid}/labRecords|medications` are read-only |
+| Storage rules | `patients/{pid}/documents/**`: members read (checked in Firestore); editors upload PDF, JPEG, PNG, WebP or HEIC under 20 MB; files can't be overwritten. Legacy `lab-pdfs/{uid}/**` is read-only |
+| Rules tests | `npm run test:rules`: 55 rules tests plus the migration suite, against the emulators |
 | `/api/pdf/parse` | Requires a Firebase ID token (verified with the Admin SDK), PDF only, max 10 MB |
 | Share links | `getSharedLinkByToken()` lists the whole collection, so an open read rule would expose every token. Redesign before enabling: key docs by token and allow `get` only, or serve shared views from a server route |
 | Secrets | `.env*` is gitignored. Only `GEMINI_API_KEY` (and `CRON_SECRET`) are secret |
 
-Rules live in `firestore.rules` and `storage.rules`, and `firebase.json` points the CLI at them. **Update them whenever you add a collection or storage path,** then redeploy:
+Rules live in `firestore.rules` and `storage.rules`, and `firebase.json` points the CLI at them. **Update them, and `tests/rules/`, whenever you add a collection or storage path,** then redeploy:
 
 ```bash
-npx firebase-tools deploy --only firestore:rules,storage
+npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage
 ```
+
+### Migrating from the single-patient model
+
+Before Phase 2, data lived under `users/{uid}/…` and `lab-pdfs/{uid}/…`. `scripts/migrate-to-patients.ts` (Admin SDK) copies each user who has lab records or medications into `patients/{uid}`: it creates the patient from the profile, the owner membership, copies lab records and medications **with the same ids** (adding `createdBy`), copies stored PDFs into the document vault with metadata and rewrites `pdfPath`, then sets `activePatientId`. It only writes what is missing, so it is safe to run again, and it never deletes the legacy data. It prints counts only.
+
+```bash
+npx tsx scripts/migrate-to-patients.ts --dry-run          # plan, all users
+npx tsx scripts/migrate-to-patients.ts --uid <uid> --dry-run
+npx tsx scripts/migrate-to-patients.ts --yes              # write (real projects need --yes)
+# options: --skip-storage, --bucket <name>; uses FIREBASE_SERVICE_ACCOUNT_B64 from .env.local,
+# or the emulators when FIRESTORE_EMULATOR_HOST is set
+```
+
+**Deploy order.** The new client only works with the new rules, and the old client can only read under them:
+
+1. `npx firebase-tools deploy --only firestore:indexes` and wait for the `members` index to finish building.
+2. Run the migration with `--dry-run`, then with `--yes`. Check that every user reports `verified OK`.
+3. Deploy the rules (`--only firestore:rules,storage`) and ship the new client together.
+4. Run the migration again to pick up anything the old client wrote in between (it only copies what's missing).
+5. One release later, remove the legacy data and the legacy rule blocks with a cleanup script.
+
+---
+
+## Phone sign-in setup
+
+Sign-in is a phone one-time code (OTP) or Google. Both can be linked to one account in **Settings → Sign-in methods**. The code lives in `lib/firebase/auth.ts`, `app/(auth)/login/page.tsx`, `components/auth/otp.tsx` and `components/settings/linked-accounts.tsx`; numbers are normalized to E.164 by `lib/phone.ts` (Indian mobiles only).
+
+Console steps (one-time):
+
+1. **Blaze plan + budget alert.** Phone auth sends real SMS, which needs the pay-as-you-go plan. In Google Cloud → Billing → Budgets & alerts, set a small monthly budget (e.g. ₹500) with email alerts at 50/90/100%.
+2. **Enable the provider.** Authentication → Sign-in method → **Phone** → Enable. Keep **Google** enabled.
+3. **SMS region policy.** Authentication → Settings → **SMS region policy** → *Allow* → India only. This blocks SMS-pumping fraud to premium numbers abroad.
+4. **Test numbers.** Phone provider → *Phone numbers for testing*: e.g. `+91 99999 00001` / `123456`. They never send an SMS and don't count toward quota; use them for development and Play Store review.
+5. **Authorized domains.** Authentication → Settings → Authorized domains: add `localhost` and every production hostname. reCAPTCHA (invisible) only runs on these.
+6. **Auth domain for redirects / TWA.** Google sign-in uses a popup and falls back to a redirect when popups are blocked (common in installed PWAs and the Android TWA). For the redirect to survive browser storage partitioning, serve Firebase's auth helper from the app's own origin: `next.config.js` already proxies `/__/auth/*` and `/__/firebase/*` to `<project-id>.firebaseapp.com`. Set `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` to the app's domain (e.g. `ckd.example.com`) and add `https://<that-domain>/__/auth/handler` to the OAuth client's **Authorized redirect URIs** (Google Cloud → APIs & Services → Credentials → *Web client (auto created by Google Service)*). Leave it as `<project-id>.firebaseapp.com` for local dev.
+
+**Existing Google users: link, don't start over.** Signing in with a phone number that isn't linked yet creates a *new, empty* account. Sign in with Google first, then add the phone in Settings. If a number or Google account already belongs to another account, linking is refused with "already belongs to a separate account"; accounts are never merged automatically.
+
+**Local testing.** With `NEXT_PUBLIC_USE_EMULATORS=1` and `npx firebase-tools emulators:start --only auth,firestore`, no SMS is sent and reCAPTCHA is bypassed. Read the codes from `http://127.0.0.1:9099/emulator/v1/projects/<project-id>/verificationCodes` (or the Emulator UI → Authentication).
 
 ---
 
@@ -271,7 +334,7 @@ The app is a standard Next.js app. **Vercel** is the simplest host: import the r
 After deploying:
 
 1. Add the production domain to Firebase Auth → **Authorized domains**.
-2. Deploy rules (above) if they changed.
+2. Deploy rules and indexes (above) if they changed. For the Phase 2 data model, follow the [deploy order](#migrating-from-the-single-patient-model).
 
 ---
 
@@ -281,25 +344,34 @@ After deploying:
 app/
   (auth)/login/            Public login page
   (app)/                   Authenticated area, wrapped by AppShell
-    dashboard/  records/  records/new/  upload/  trends/  analysis/  medications/  settings/
+    dashboard/  records/  records/new/  upload/  trends/  analysis/  medications/  settings/  onboarding/
   api/pdf/parse/route.ts   Only server route: PDF → lab values
   layout.tsx  manifest.ts  error.tsx  loading.tsx  page.tsx (redirects to /dashboard or /login)
 components/
-  layout/                  AppShell, BottomNav, Header
-  providers/               AuthProvider, ToastProvider
+  layout/                  AppShell, BottomNav, Header, PatientSwitcher
+  providers/               AuthProvider, PatientProvider (active patient, role, realtime records), ToastProvider
+  shared/                  ViewOnlyNotice
   dashboard/ records/ trends/   Feature components
   ui/                      Button, Card, Badge, Modal, Tabs, Toast, Skeleton
 lib/
-  firebase/                config, auth, firestore, storage, messaging wrappers
-  hooks/use-lab-records.ts Fetch, seed and select helpers
+  firebase/                config, auth, firestore (pid-scoped data), patients (profiles, members,
+                           activity, targets), storage (document vault), messaging
+  hooks/                   useLabRecords (reads PatientProvider), useProfile (active patient)
   calculations/            Pure scoring, trends, deltas and analysis
   constants/               Reference ranges, panels, seed data, medications
   personal/                Patient data: types.ts, sample.ts (synthetic), local.ts (gitignored)
-  types/                   LabRecord, Medication, analysis types
+  types/                   LabRecord, Medication, Patient, Member, care.ts (later-phase contract)
+scripts/
+  migrate-to-patients.ts   users/{uid} → patients/{uid} migration (lib/migrate-patients.ts)
+  seed-owner.ts            Import local.ts medications/doctor into patients/{uid}
+  test-rules.mjs           npm run test:rules wrapper
+tests/
+  *.test.ts                Unit tests (npm test)
+  rules/                   Emulator tests: firestore, storage, migration (npm run test:rules)
 public/
   firebase-messaging-sw.js FCM service worker
   icons/                   PWA icons
-firestore.rules  storage.rules  firebase.json  .firebaserc
+firestore.rules  storage.rules  firestore.indexes.json  firebase.json  firebase.test.json  .firebaserc
 kidney-health-tracker.jsx  Original single-file prototype (gitignored, not imported)
 ```
 
@@ -313,7 +385,8 @@ kidney-health-tracker.jsx  Original single-file prototype (gitignored, not impor
 | Lab records: list, add (manual), add (PDF), delete | ✅ Working |
 | Dashboard, trends, analysis | ✅ Working |
 | Edit a record | 🟡 `updateLabRecord()` exists, but there is no UI for it |
-| Store uploaded PDFs | 🟡 `uploadPDF()` and Storage rules exist, but the upload page doesn't call them, so `pdfPath` is never set |
+| Multiple profiles + care-circle roles | ✅ Data model, rules, onboarding, profile switcher, view-only UI. Inviting people arrives in Phase 4 (members are added server-side) |
+| Store uploaded PDFs | ✅ The upload page keeps the original PDF in `patients/{pid}/documents` and links it from the record |
 | Medications | 🟡 Read from Firestore; no add/edit screen yet (import yours with `scripts/seed-owner.ts`) |
 | Profile editing / settings | 🟡 Settings shows only email and sign-out |
 | Push notifications (lab reminders) | 🔴 `messaging.ts` is never called. The service worker reads `self.__FIREBASE_CONFIG__`, which is never set |
@@ -321,7 +394,7 @@ kidney-health-tracker.jsx  Original single-file prototype (gitignored, not impor
 | Offline / service-worker caching | 🔴 `serwist` / `@serwist/next` installed but not configured |
 | PDF export | 🔴 `@react-pdf/renderer` installed but unused |
 | Gemini fallback | ✅ `@google/genai` with structured output; model from `GEMINI_MODEL` |
-| Tests | ✅ Vitest, 252 tests (parsers, calculations, consistency) |
+| Tests | ✅ Vitest unit tests (`npm test`) plus emulator tests for rules and migration (`npm run test:rules`) |
 
 Dependencies that are installed but unused: `react-hook-form`, `zod`, `@react-pdf/renderer`, `serwist`, `@serwist/next`.
 

@@ -12,6 +12,8 @@ out/
 
 # debug
 npm-debug.log*
+# firebase-tools / emulator logs (firebase-debug.log dumps the whole environment, secrets included)
+*-debug.log
 
 # misc
 .DS_Store

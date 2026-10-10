@@ -1,14 +1,45 @@
 rules_version = '2';
 
+// Membership is read from Firestore (cross-service rules). On first deploy the
+// CLI asks to grant the Storage service agent access to Firestore: accept it.
+//
+// Tests: tests/rules/storage.test.ts (`npm run test:rules`).
+
 service firebase.storage {
   match /b/{bucket}/o {
-    // Uploaded lab report PDFs: lab-pdfs/{uid}/{timestamp}-{filename}
+
+    function memberDoc(pid) {
+      return /databases/(default)/documents/patients/$(pid)/members/$(request.auth.uid);
+    }
+
+    function isMember(pid) {
+      return request.auth != null && firestore.exists(memberDoc(pid));
+    }
+
+    function isEditor(pid) {
+      return isMember(pid) && firestore.get(memberDoc(pid)).data.role in ['owner', 'editor'];
+    }
+
+    // Document vault: patients/{pid}/documents/{docId}/{fileName}
+    // Metadata lives in Firestore at patients/{pid}/documents/{docId}.
+    match /patients/{pid}/documents/{docId}/{fileName} {
+      allow read: if isMember(pid);
+      // `resource == null`: never overwrite an existing object (some runtimes
+      // evaluate an overwrite as create rather than update).
+      allow create: if isEditor(pid)
+        && resource == null
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches('application/pdf|image/(jpeg|png|webp|heic)');
+      // Files are immutable: upload a new document instead of overwriting.
+      allow update: if false;
+      allow delete: if isEditor(pid);
+    }
+
+    // LEGACY uploads (pre-Phase 2): read-only until the cleanup release.
+    // scripts/migrate-to-patients.ts copies them into the document vault.
     match /lab-pdfs/{uid}/{fileName} {
-      allow read, delete: if request.auth != null && request.auth.uid == uid;
-      allow create, update: if request.auth != null
-        && request.auth.uid == uid
-        && request.resource.contentType == 'application/pdf'
-        && request.resource.size < 20 * 1024 * 1024;
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
     }
   }
 }

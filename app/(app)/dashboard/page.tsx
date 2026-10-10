@@ -15,7 +15,7 @@ import { cn, formatDate } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
-import { useAuth } from '@/components/providers/auth-provider'
+import { usePatient, useCanEdit } from '@/components/providers/patient-provider'
 import { addLabRecord } from '@/lib/firebase/firestore'
 // Synthetic demo data only — client code must never import the personal-data alias
 import { SEED_RECORDS } from '@/lib/constants/seed-data'
@@ -30,26 +30,26 @@ const CRITICAL_TESTS = [
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { user } = useAuth()
-  const { records, loading, refetch } = useLabRecords()
+  const { pid, activePatient, patients } = usePatient()
+  const canEdit = useCanEdit()
+  const { records, loading } = useLabRecords()
   const [demoLoading, setDemoLoading] = useState(false)
   const [demoError, setDemoError] = useState<string | null>(null)
   const demoInFlight = useRef(false)
 
   async function loadDemoData() {
-    if (!user || demoInFlight.current) return
+    if (!pid || !canEdit || demoInFlight.current) return
     demoInFlight.current = true
     setDemoLoading(true)
     setDemoError(null)
     try {
       for (const record of SEED_RECORDS) {
-        await addLabRecord(user.uid, {
+        await addLabRecord(pid, {
           recordDate: new Date(record.recordDate),
           labName: record.labName,
           values: record.values,
         })
       }
-      await refetch()
     } catch (err) {
       console.error('Failed to load demo data:', err)
       setDemoError('Failed to load demo data')
@@ -86,12 +86,30 @@ export default function DashboardPage() {
           <h2 className="font-serif text-[2rem] font-normal leading-tight tracking-[-.02em] text-ink">
             No records <em className="italic text-terra-dk">yet</em>
           </h2>
-          <p className="mx-auto mt-3 max-w-[34ch] text-[15px] text-ink-2">Add your first lab report to see your health dashboard.</p>
-          {DEMO_ENABLED && (
+          <p className="mx-auto mt-3 max-w-[34ch] text-[15px] text-ink-2">
+            {canEdit
+              ? 'Add your first lab report to see the health dashboard.'
+              : `No reports have been added for ${activePatient?.displayName ?? 'this profile'} yet.`}
+          </p>
+          {canEdit && (
+            <div className="mt-8">
+              <Button onClick={() => router.push('/upload')}>
+                <Upload className="h-4 w-4" aria-hidden />
+                Upload a report
+              </Button>
+              <p className="mt-3">
+                <button type="button" onClick={() => router.push('/records/new')} className="tlink text-[13px]">
+                  or enter values by hand
+                </button>
+              </p>
+            </div>
+          )}
+          {DEMO_ENABLED && canEdit && (
             <div className="mt-8">
               <Button
                 onClick={loadDemoData}
-                disabled={!user}
+                variant="secondary"
+                disabled={!pid}
                 loading={demoLoading}
               >
                 {demoLoading ? 'Loading demo data…' : 'Load demo data'}
@@ -132,14 +150,16 @@ export default function DashboardPage() {
         emphasis="Tracker"
         subtitle={`Last: ${formatDate(latestRecord.recordDate, 'dd MMM yy')}`}
         actions={
-          <button
-            type="button"
-            onClick={() => router.push('/upload')}
-            aria-label="Upload report"
-            className={primaryIconButton}
-          >
-            <Upload className="h-[18px] w-[18px]" />
-          </button>
+          canEdit ? (
+            <button
+              type="button"
+              onClick={() => router.push('/upload')}
+              aria-label="Upload report"
+              className={primaryIconButton}
+            >
+              <Upload className="h-[18px] w-[18px]" />
+            </button>
+          ) : undefined
         }
       />
       <main className="space-y-4 px-4 py-4">
@@ -204,6 +224,14 @@ export default function DashboardPage() {
 
         {/* Panel Overview */}
         <PanelOverview records={records} latestRecord={latestRecord} />
+
+        {patients.length === 1 && (
+          <p className="pt-2 text-center">
+            <button type="button" onClick={() => router.push('/onboarding')} className="tlink text-[13px]">
+              Track someone else&rsquo;s reports →
+            </button>
+          </p>
+        )}
       </main>
     </>
   )

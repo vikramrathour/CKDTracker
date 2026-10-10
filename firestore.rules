@@ -1,23 +1,221 @@
 rules_version = '2';
 
+// CKD Tracker — multi-tenant care-circle model (Phase 2).
+//
+//   users/{uid}                         profile + activePatientId (owner-only)
+//   users/{uid}/fcmTokens/{token}       push tokens (owner-only)
+//   users/{uid}/labRecords|medications  LEGACY, read-only until the cleanup release
+//   patients/{pid}                      ownerUid, displayName, dob, transplantDate, doctor, hospital
+//     members/{uid}                     uid, role (owner|editor|viewer), displayName, phone, addedBy
+//     labRecords | medications(/doseHistory) | visits | vitals | documents
+//       | questions | targets/{testName} | alertRules        viewer read, editor write
+//     activity/{id}                     append-only audit
+//     chats/{chatId}/messages/{mid}     server-written; readable only by the thread creator
+//   invites/{id}, usage/{id}, sharedLinks/{id}                server-only
+//
+// Tests: tests/rules/*.test.ts (`npm run test:rules`).
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isOwner(uid) {
-      return request.auth != null && request.auth.uid == uid;
+
+    // ---------------------------------------------------------------- helpers
+
+    function signedIn() {
+      return request.auth != null;
     }
 
-    // Profile, lab records, medications — readable/writable only by the signed-in owner.
-    match /users/{uid} {
-      allow read, write: if isOwner(uid);
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
 
-      match /{subcollection}/{docId} {
-        allow read, write: if isOwner(uid);
+    function patientPath(pid) {
+      return /databases/$(database)/documents/patients/$(pid);
+    }
+
+    function myMemberPath(pid) {
+      return /databases/$(database)/documents/patients/$(pid)/members/$(request.auth.uid);
+    }
+
+    function rank(role) {
+      return {'viewer': 1, 'editor': 2, 'owner': 3}.get(role, 0);
+    }
+
+    // The caller's role on pid is at least `min`. exists()+get() on the same
+    // path count as one billed read and are cached for the whole request.
+    function hasRole(pid, min) {
+      return signedIn()
+        && exists(myMemberPath(pid))
+        && rank(get(myMemberPath(pid)).data.role) >= rank(min);
+    }
+
+    // pid naming: your own profile is pid == uid; people you care for are
+    // `${uid}_${suffix}`. Stops anyone claiming another user's pid (squatting).
+    function isPidForCaller(pid) {
+      return pid == request.auth.uid || pid.matches(request.auth.uid + '_[A-Za-z0-9]{6,40}');
+    }
+
+    function optString(data, key, max) {
+      return !(key in data) || data[key] == null || (data[key] is string && data[key].size() <= max);
+    }
+
+    function patientEditable() {
+      return ['displayName', 'relationship', 'dateOfBirth', 'transplantDate', 'doctorName', 'hospital', 'updatedAt'];
+    }
+
+    function validPatientFields(data) {
+      return data.displayName is string
+        && data.displayName.size() > 0 && data.displayName.size() <= 100
+        && (!('relationship' in data) || data.relationship in ['self', 'family', 'other'])
+        && optString(data, 'dateOfBirth', 10)
+        && optString(data, 'transplantDate', 10)
+        && optString(data, 'doctorName', 120)
+        && optString(data, 'hospital', 160);
+    }
+
+    // Data docs: createdBy is set to the author on create and never changes.
+    function createdByMe() {
+      return request.resource.data.createdBy == request.auth.uid;
+    }
+
+    function createdByUnchanged() {
+      return request.resource.data.get('createdBy', null) == resource.data.get('createdBy', null);
+    }
+
+    function isDataCollection(coll) {
+      return coll in ['labRecords', 'medications', 'visits', 'vitals', 'documents',
+                      'questions', 'targets', 'alertRules'];
+    }
+
+    // ------------------------------------------------------------------ users
+
+    match /users/{uid} {
+      // Profile doc (fullName, email, phoneNumber, activePatientId, migratedAt, …)
+      allow read, write: if isSelf(uid);
+
+      match /fcmTokens/{token} {
+        allow read, write: if isSelf(uid);
+      }
+
+      // LEGACY single-tenant data, migrated to patients/{uid}/… by
+      // scripts/migrate-to-patients.ts. Kept readable for one release, then
+      // removed by a cleanup script. No client writes.
+      match /labRecords/{id} {
+        allow read: if isSelf(uid);
+      }
+      match /medications/{id} {
+        allow read: if isSelf(uid);
       }
     }
 
-    // sharedLinks: closed to clients. getSharedLinkByToken() currently lists the whole
-    // collection, which would expose every token. Serve shared views from a server
-    // route (Admin SDK) or key docs by token and allow `get` only, before opening this.
+    // ------------------------------------------- memberships (collection group)
+
+    // listMyPatients(): collectionGroup('members').where('uid', '==', me).
+    // A query is allowed only if every result is the caller's own membership.
+    match /{path=**}/members/{memberUid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // --------------------------------------------------------------- patients
+
+    match /patients/{pid} {
+      allow get: if hasRole(pid, 'viewer');
+      allow list: if false;
+
+      // Created in ONE batch with the owner's member doc (see members create).
+      allow create: if signedIn()
+        && isPidForCaller(pid)
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly(patientEditable().concat(['ownerUid', 'createdAt']))
+        && validPatientFields(request.resource.data)
+        && getAfter(myMemberPath(pid)).data.role == 'owner';
+
+      // Editors can keep doctor/hospital/dates current; ownerUid/createdAt are fixed.
+      allow update: if hasRole(pid, 'editor')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(patientEditable())
+        && validPatientFields(request.resource.data);
+
+      // Deleting a patient (and its subcollections) is a server-side operation.
+      allow delete: if false;
+
+      // ---- care circle
+      match /members/{memberUid} {
+        allow read: if hasRole(pid, 'viewer');
+
+        // Owner bootstrap only: the patient doc must not exist yet and must be
+        // created in the same batch with ownerUid == caller. Every other member
+        // is added by the server (invite redemption, Admin SDK).
+        allow create: if isSelf(memberUid)
+          && request.resource.data.uid == memberUid
+          && request.resource.data.role == 'owner'
+          && request.resource.data.addedBy == memberUid
+          && request.resource.data.keys().hasOnly(['uid', 'role', 'displayName', 'phone', 'addedBy', 'addedAt'])
+          && !exists(patientPath(pid))
+          && getAfter(patientPath(pid)).data.ownerUid == request.auth.uid;
+
+        // Only the owner changes roles, only between editor and viewer, and
+        // never on the owner's own doc.
+        allow update: if hasRole(pid, 'owner')
+          && resource.data.role != 'owner'
+          && request.resource.data.role in ['editor', 'viewer']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']);
+
+        // A member can leave; the owner can remove others; the owner doc stays.
+        allow delete: if resource.data.role != 'owner'
+          && (isSelf(memberUid) || hasRole(pid, 'owner'));
+      }
+
+      // ---- clinical data: viewers read, editors write
+      match /{coll}/{docId} {
+        allow read: if isDataCollection(coll) && hasRole(pid, 'viewer');
+        allow create: if isDataCollection(coll) && hasRole(pid, 'editor') && createdByMe();
+        allow update: if isDataCollection(coll) && hasRole(pid, 'editor') && createdByUnchanged();
+        allow delete: if isDataCollection(coll) && hasRole(pid, 'editor');
+      }
+
+      match /medications/{medId}/doseHistory/{doseId} {
+        allow read: if hasRole(pid, 'viewer');
+        allow create: if hasRole(pid, 'editor') && createdByMe();
+        allow update: if hasRole(pid, 'editor') && createdByUnchanged();
+        allow delete: if hasRole(pid, 'editor');
+      }
+
+      // ---- audit trail: append-only
+      match /activity/{entryId} {
+        allow read: if hasRole(pid, 'viewer');
+        allow create: if hasRole(pid, 'editor')
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+
+      // ---- AI chat: written by /api/chat (Admin SDK); private to the thread creator
+      match /chats/{chatId} {
+        allow read: if hasRole(pid, 'viewer') && resource.data.createdBy == request.auth.uid;
+        allow write: if false;
+
+        match /messages/{messageId} {
+          allow read: if hasRole(pid, 'viewer')
+            && get(/databases/$(database)/documents/patients/$(pid)/chats/$(chatId)).data.createdBy == request.auth.uid;
+          allow write: if false;
+        }
+      }
+    }
+
+    // ------------------------------------------------------------ server-only
+
+    // Invites are created/redeemed through /api/invites (Admin SDK).
+    match /invites/{inviteId} {
+      allow read, write: if false;
+    }
+
+    // Per-user chat usage caps, maintained by /api/chat.
+    match /usage/{usageId} {
+      allow read, write: if false;
+    }
+
+    // sharedLinks: closed. getSharedLinkByToken() lists the whole collection,
+    // which would expose every token. Serve shared views from a server route.
     match /sharedLinks/{linkId} {
       allow read, write: if false;
     }

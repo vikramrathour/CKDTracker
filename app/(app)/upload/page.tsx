@@ -4,9 +4,11 @@ import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { Header } from '@/components/layout/header'
-import { useAuth } from '@/components/providers/auth-provider'
+import { usePatient, useCanEdit } from '@/components/providers/patient-provider'
+import { ViewOnlyNotice } from '@/components/shared/view-only-notice'
 import { useLabRecords } from '@/lib/hooks/use-lab-records'
 import { addLabRecord } from '@/lib/firebase/firestore'
+import { linkDocumentToRecord, uploadDocument } from '@/lib/firebase/storage'
 import { apiFetch } from '@/lib/api/client'
 import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
 import { Upload, Check, AlertCircle } from 'lucide-react'
@@ -18,11 +20,13 @@ type Step = 'upload' | 'parsing' | 'review' | 'saving' | 'done' | 'error'
 
 export default function UploadPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { pid } = usePatient()
+  const canEdit = useCanEdit()
   const { records } = useLabRecords()
 
   const [step, setStep] = useState<Step>('upload')
   const [fileName, setFileName] = useState('')
+  const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState('')
   const [date, setDate] = useState('')
   const [labName, setLabName] = useState('')
@@ -34,6 +38,7 @@ export default function UploadPage() {
     if (!file) return
 
     setFileName(file.name)
+    setFile(file)
     setStep('parsing')
     setError('')
 
@@ -99,7 +104,7 @@ export default function UploadPage() {
   }
 
   const handleSave = async () => {
-    if (!user || values.length === 0) return
+    if (!pid || !canEdit || values.length === 0) return
 
     // Check for duplicate date
     const existing = records.find((r) => r.recordDate.startsWith(date))
@@ -112,17 +117,41 @@ export default function UploadPage() {
 
     setStep('saving')
     try {
-      await addLabRecord(user.uid, {
+      // Keep the original PDF in the patient's document vault. Best-effort:
+      // the extracted values are what matter, so a storage failure (offline,
+      // rules not deployed yet) must not lose the record.
+      let stored: { docId: string; storagePath: string } | null = null
+      if (file) {
+        try {
+          stored = await uploadDocument(pid, file, { kind: 'lab-report', documentDate: date || null })
+        } catch (err) {
+          console.warn('Original PDF not stored:', err)
+        }
+      }
+      const recordId = await addLabRecord(pid, {
         recordDate: new Date(date),
         labName,
         values,
+        pdfPath: stored?.storagePath,
       })
+      if (stored) {
+        await linkDocumentToRecord(pid, stored.docId, recordId).catch((err) => console.warn('Document link failed:', err))
+      }
       setStep('done')
       setTimeout(() => router.push('/dashboard'), 1500)
     } catch (err) {
       setError('Failed to save record.')
       setStep('error')
     }
+  }
+
+  if (!canEdit) {
+    return (
+      <>
+        <Header title="Upload Report" emphasis="Report" showBack />
+        <main className="px-4 py-5"><ViewOnlyNotice action="upload reports" /></main>
+      </>
+    )
   }
 
   return (

@@ -18,6 +18,8 @@ export interface LabRecord {
   notes?: string
   pdfPath?: string | null
   values: LabValue[]
+  /** uid of the member who added it (absent on pre-migration records). */
+  createdBy?: string
   createdAt?: string
   updatedAt?: string
 }

@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/header'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/tabs'
-import { useAuth } from '@/components/providers/auth-provider'
+import { usePatient, useCanEdit } from '@/components/providers/patient-provider'
+import { ViewOnlyNotice } from '@/components/shared/view-only-notice'
 import { useLabRecords } from '@/lib/hooks/use-lab-records'
 import { addLabRecord } from '@/lib/firebase/firestore'
 import { PANELS } from '@/lib/constants/test-panels'
@@ -14,7 +15,8 @@ import type { LabValue, Panel } from '@/lib/types/lab-record'
 
 export default function NewRecordPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { pid } = usePatient()
+  const canEdit = useCanEdit()
   const { records } = useLabRecords()
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -28,7 +30,7 @@ export default function NewRecordPage() {
   }
 
   const handleSave = async () => {
-    if (!user || !date) return
+    if (!pid || !canEdit || !date) return
 
     // Check for duplicate date
     const existingRecord = records.find(
@@ -70,7 +72,7 @@ export default function NewRecordPage() {
         return
       }
 
-      await addLabRecord(user.uid, {
+      await addLabRecord(pid, {
         recordDate: new Date(date),
         labName: lab,
         values: labValues,
@@ -83,6 +85,15 @@ export default function NewRecordPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (!canEdit) {
+    return (
+      <>
+        <Header title="Add Record" emphasis="Record" showBack />
+        <main className="px-4 py-5"><ViewOnlyNotice /></main>
+      </>
+    )
   }
 
   const currentPanel = PANELS.find((p) => p.id === activePanel)
