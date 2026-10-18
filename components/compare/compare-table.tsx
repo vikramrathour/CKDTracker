@@ -65,7 +65,7 @@ export function CompareTable({
       >
         <span className="label text-ink-3">Test</span>
         {columnLabels.slice(0, n).map((l, i) => (
-          <span key={l} className={cn('label text-right', i === 0 ? 'text-ink' : 'text-ink-3')}>
+          <span key={i} className={cn('label text-right', i === 0 ? 'text-ink' : 'text-ink-3')}>
             {l}
           </span>
         ))}

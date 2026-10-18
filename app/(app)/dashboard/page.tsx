@@ -1,14 +1,12 @@
 'use client'
 
+import Link from 'next/link'
 import { Header, primaryIconButton } from '@/components/layout/header'
-import { HealthScoreRing } from '@/components/dashboard/health-score-ring'
-import { SystemScores } from '@/components/dashboard/system-scores'
-import { CriticalMetricCard } from '@/components/dashboard/critical-metric-card'
-import { QuickStats } from '@/components/dashboard/quick-stats'
-import { PanelOverview } from '@/components/dashboard/panel-overview'
-import { useLabRecords, getTrendPoints, getValueFromRecord } from '@/lib/hooks/use-lab-records'
+import { KeyTiles } from '@/components/dashboard/key-tiles'
+import { HealthScoreRow } from '@/components/dashboard/health-score-row'
+import { useLabRecords } from '@/lib/hooks/use-lab-records'
 import { computeHealthScore } from '@/lib/calculations/health-score'
-import { resolveRange, valueStatus } from '@/lib/calculations/targets'
+import { buildComparison } from '@/lib/calculations/compare'
 import { useTargets } from '@/lib/hooks/use-targets'
 import { AlertsBanner } from '@/components/alerts/alerts-banner'
 import { PendingInvitesBanner } from '@/components/care-circle/incoming-invites'
@@ -16,25 +14,20 @@ import { UpcomingVisitCard } from '@/components/visits/visit-card'
 import { useVisits } from '@/components/visits/hooks'
 import { splitVisits } from '@/lib/visits/types'
 import { VitalsQuickEntry } from '@/components/vitals/vitals-quick-entry'
+import { CompareTable } from '@/components/compare/compare-table'
+import { OpenReportButton } from '@/components/records/open-report-button'
 import { CardSkeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { interactiveCard } from '@/components/ui/card'
-import { cn, formatDate } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
-import { useRef, useState } from 'react'
-import { Upload } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { Stethoscope, Upload } from 'lucide-react'
 import { usePatient, useCanEdit } from '@/components/providers/patient-provider'
 import { addLabRecord } from '@/lib/firebase/firestore'
 // Synthetic demo data only — client code must never import the personal-data alias
 import { SEED_RECORDS } from '@/lib/constants/seed-data'
 
 const DEMO_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEMO === '1'
-
-const CRITICAL_TESTS = [
-  { testName: 'Creatinine', label: 'Creatinine' },
-  { testName: 'eGFR', label: 'eGFR' },
-  { testName: 'Tacrolimus', label: 'Tac Level' },
-]
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -47,6 +40,8 @@ export default function DashboardPage() {
   const [demoLoading, setDemoLoading] = useState(false)
   const [demoError, setDemoError] = useState<string | null>(null)
   const demoInFlight = useRef(false)
+  // Latest vs previous per test (columns are per test: reports are often partial)
+  const comparison = useMemo(() => buildComparison(records, { targets: targetMap }), [records, targetMap])
 
   async function loadDemoData() {
     if (!pid || !canEdit || demoInFlight.current) return
@@ -75,8 +70,7 @@ export default function DashboardPage() {
       <>
         <Header title="CKD Tracker" emphasis="Tracker" />
         <main className="px-4 py-4 space-y-4">
-          <CardSkeleton />
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-3 gap-2">
             <CardSkeleton />
             <CardSkeleton />
             <CardSkeleton />
@@ -134,24 +128,9 @@ export default function DashboardPage() {
     )
   }
 
+  // Records are ascending by date: the newest is last
   const latestRecord = records[records.length - 1]
-  const previousRecord = records.length > 1 ? records[records.length - 2] : undefined
   const healthScore = computeHealthScore(latestRecord.values, targetMap)
-
-  // Determine trajectory from eGFR trend
-  const egfrPoints = getTrendPoints(records, 'eGFR')
-  let trajectory = 'stable'
-  if (egfrPoints.length >= 3) {
-    const last = egfrPoints[egfrPoints.length - 1].value
-    const first = egfrPoints[0].value
-    const change = last - first
-    trajectory = change > 3 ? 'improving' : change < -3 ? 'declining' : 'stable'
-  }
-
-  // Find alerts from latest record
-  const alerts = latestRecord.values
-    .filter((v) => valueStatus(v.testName, v.value, v, targetMap) === 'danger')
-    .map((v) => ({ v, range: resolveRange(v.testName, v, targetMap) }))
 
   return (
     <>
@@ -174,71 +153,52 @@ export default function DashboardPage() {
       />
       <main className="space-y-4 px-4 py-4">
         <PendingInvitesBanner />
+
+        {/* Key numbers: latest vs previous, tap for the chart */}
+        <KeyTiles rows={comparison.rows} />
+
         <AlertsBanner />
         {nextVisit && <UpcomingVisitCard visit={nextVisit} />}
 
-        {/* Health Score — tap to view analysis */}
-        <div
-          onClick={() => router.push('/analysis')}
-          className={cn('rounded-card border border-hair bg-vellum p-4 shadow-soft', interactiveCard)}
-        >
-          <div className="flex items-center gap-4">
-            <HealthScoreRing score={healthScore.overall} size={80} label="Overall" />
-            <div className="min-w-0 flex-1">
-              <h2 className="font-serif text-[1.375rem] font-medium leading-tight tracking-[-.015em] text-ink">
-                Health <em className="italic text-terra-dk">score</em>
-              </h2>
-              <QuickStats records={records} trajectory={trajectory} />
-            </div>
-          </div>
-          <SystemScores scores={healthScore.systems} />
-          <div className="mt-4 text-center">
-            <span className="tlink text-[13px]">Tap for deep analysis →</span>
-          </div>
-        </div>
-
-        {/* Critical Metrics */}
-        <div className="grid grid-cols-3 gap-2.5">
-          {CRITICAL_TESTS.map((test) => (
-            <CriticalMetricCard
-              key={test.testName}
-              testName={test.testName}
-              label={test.label}
-              current={getValueFromRecord(latestRecord, test.testName)}
-              previous={previousRecord ? getValueFromRecord(previousRecord, test.testName) : undefined}
-              trendPoints={getTrendPoints(records, test.testName)}
-              targetMap={targetMap}
-            />
-          ))}
-        </div>
-
-        {/* Alerts */}
-        {alerts.length > 0 && (
-          <div className="space-y-2">
-            {alerts.map(({ v, range }) => (
-              <div
-                key={v.testName}
-                role="status"
-                className="flex gap-3 rounded-card border border-hair-hot bg-terra-pale/70 p-3.5"
+        {/* Latest results: 2-column comparison, normal panels collapsed */}
+        <section aria-labelledby="latest-results">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2
+                id="latest-results"
+                className="font-serif text-[1.375rem] font-medium leading-tight tracking-[-.015em] text-ink"
               >
-                <span className="pulse-dot mt-[7px]" aria-hidden />
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-terra-dk tabular">
-                    {v.testName}: {v.value} {v.unit}
-                  </div>
-                  <div className="mt-0.5 text-[13px] text-ink-2 tabular">
-                    {`${range && range.min != null && v.value < range.min ? 'Below' : 'Above'} ${range?.source === 'target' ? 'your target' : 'normal range'} (${range?.min ?? '—'}–${range?.max ?? '—'})`}
-                  </div>
-                </div>
+                Latest <em className="italic text-terra-dk">results</em>
+              </h2>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                {comparison.latestDate && (
+                  <span className="text-[13px] text-ink-3 tabular">
+                    as of {formatDate(comparison.latestDate, 'd MMM yyyy')}
+                  </span>
+                )}
+                <OpenReportButton pdfPath={latestRecord.pdfPath} variant="link" label="Open report" />
               </div>
-            ))}
+            </div>
+            <Link
+              href="/compare"
+              className="inline-flex min-h-[44px] flex-shrink-0 items-center gap-1.5 rounded-btn border-[1.5px] border-terra px-3 text-[13px] font-semibold text-terra-dk transition-colors hover:bg-terra-pale"
+            >
+              <Stethoscope className="h-4 w-4" aria-hidden />
+              Show doctor
+            </Link>
           </div>
-        )}
+          <CompareTable
+            comparison={comparison}
+            columns={2}
+            columnLabels={['Latest', 'Previous']}
+            collapseNormal
+            className="mt-2"
+          />
+        </section>
 
-        {/* Panel Overview */}
+        <HealthScoreRow score={healthScore} />
+
         <VitalsQuickEntry />
-
-        <PanelOverview records={records} latestRecord={latestRecord} targetMap={targetMap} />
 
         {patients.length === 1 && (
           <p className="pt-2 text-center">

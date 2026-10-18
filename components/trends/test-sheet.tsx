@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { X } from 'lucide-react'
 import {
   ComposedChart,
@@ -42,6 +43,9 @@ export function useTestSheet(): TestSheetApi | null {
 export function TestSheetProvider({ children }: { children: React.ReactNode }) {
   const [testName, setTestName] = useState<string | null>(null)
   const open = useCallback((name: string) => setTestName(name), [])
+  // Close on navigation so a sheet never lingers over another page.
+  const pathname = usePathname()
+  useEffect(() => setTestName(null), [pathname])
   const api = useMemo(() => ({ open }), [open])
   return (
     <TestSheetContext.Provider value={api}>
@@ -246,8 +250,9 @@ export function TestHistory({
                   labelFormatter={(t: number) => formatDate(new Date(t).toISOString(), 'd MMM yyyy')}
                   formatter={(v: number) => [`${formatValue(v, unit)} ${unit}`.trim(), label]}
                 />
+                {/* Straight segments: a smoothed curve would imply values between readings. */}
                 <Line
-                  type="monotone"
+                  type="linear"
                   dataKey="value"
                   stroke={c.ink2}
                   strokeWidth={2}
@@ -291,7 +296,8 @@ export function TestHistory({
           )
         })}
       </ul>
-      {readings.length > readingsLimit && (
+      {/* Only from the sheet: on the Trends page this would link to itself. */}
+      {onNavigate && readings.length > readingsLimit && (
         <Link href={`/trends?test=${encodeURIComponent(testName)}`} onClick={onNavigate} className="tlink mt-3 inline-block text-[13px]">
           All {readings.length} readings
         </Link>

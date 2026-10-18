@@ -3,52 +3,55 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Pencil } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
 import { Header, iconButton } from '@/components/layout/header'
 import { usePatient, useCanEdit } from '@/components/providers/patient-provider'
 import { Button } from '@/components/ui/button'
 import { ListSkeleton } from '@/components/ui/skeleton'
-import { STATUS_STYLES } from '@/components/ui/status'
-import { DocumentPreview } from '@/components/documents/document-preview'
+import { CompareTable } from '@/components/compare/compare-table'
+import { OpenReportButton } from '@/components/records/open-report-button'
 import { ValuesEditor } from '@/components/records/values-editor'
 import { deleteLabRecord, updateLabRecord } from '@/lib/firebase/firestore'
-import { PANELS } from '@/lib/constants/test-panels'
-import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
-import { formatDate, formatValue, cn } from '@/lib/utils'
-import { formatRange, resolveRange, valueStatus, type TargetMap } from '@/lib/calculations/targets'
+import { buildComparison } from '@/lib/calculations/compare'
+import { formatDate, formatShortDate, cn } from '@/lib/utils'
+import { valueStatus } from '@/lib/calculations/targets'
 import { useTargets } from '@/lib/hooks/use-targets'
 import type { LabValue } from '@/lib/types/lab-record'
 import type { LabRecordWithSource } from '@/lib/firebase/documents'
 
-/** The range printed on the report (falling back to the default range), without targets. */
-function labRangeOf(v: LabValue): string {
-  const range = resolveRange(v.testName, v)
-  return range ? formatRange(range) : '—'
-}
+const navButton =
+  'flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 rounded-btn border border-hair px-3 text-[13px] text-ink-2 tabular transition-colors'
 
-/** The range the value is judged against: the patient's target when set, else the lab range. */
-function RangeCell({ v, targetMap }: { v: LabValue; targetMap: TargetMap }) {
-  const resolved = resolveRange(v.testName, v, targetMap)
-  const lab = labRangeOf(v)
-  if (!resolved) return <>—</>
-  const primary = formatRange(resolved)
-  if (resolved.source !== 'target') return <>{primary}</>
+type Neighbour = { id: string; recordDate: string } | undefined
+
+/** Older / newer report links; a muted placeholder at either end of the history. */
+function ReportNav({ older, newer }: { older: Neighbour; newer: Neighbour }) {
   return (
-    <>
-      <span className="text-ink-2">Your target {primary}</span>
-      {lab !== primary && lab !== '—' && <span className="block text-[11px] text-ink-3">Lab range {lab}</span>}
-    </>
+    <nav aria-label="Other reports" className="mt-3 flex gap-2">
+      {older ? (
+        <Link href={`/records/${older.id}`} className={cn(navButton, 'hover:border-hair-hot hover:text-ink')}>
+          <ChevronLeft className="h-4 w-4 flex-shrink-0" aria-hidden />
+          <span className="truncate"><span className="sr-only">Older report, </span>{formatShortDate(older.recordDate)}</span>
+        </Link>
+      ) : (
+        <span aria-disabled="true" className={cn(navButton, 'text-ink-3 opacity-50')}>
+          <ChevronLeft className="h-4 w-4 flex-shrink-0" aria-hidden />
+          <span className="truncate">Oldest</span>
+        </span>
+      )}
+      {newer ? (
+        <Link href={`/records/${newer.id}`} className={cn(navButton, 'justify-end hover:border-hair-hot hover:text-ink')}>
+          <span className="truncate"><span className="sr-only">Newer report, </span>{formatShortDate(newer.recordDate)}</span>
+          <ChevronRight className="h-4 w-4 flex-shrink-0" aria-hidden />
+        </Link>
+      ) : (
+        <span aria-disabled="true" className={cn(navButton, 'justify-end text-ink-3 opacity-50')}>
+          <span className="truncate">Latest</span>
+          <ChevronRight className="h-4 w-4 flex-shrink-0" aria-hidden />
+        </span>
+      )}
+    </nav>
   )
-}
-
-function guessType(path: string): string {
-  const ext = path.toLowerCase().split('.').pop()
-  if (ext === 'pdf') return 'application/pdf'
-  if (ext === 'png') return 'image/png'
-  if (ext === 'webp') return 'image/webp'
-  if (ext === 'heic' || ext === 'heif') return 'image/heic'
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
-  return 'application/octet-stream'
 }
 
 export default function RecordDetailPage() {
@@ -57,7 +60,11 @@ export default function RecordDetailPage() {
   const { pid, records, recordsLoading } = usePatient()
   const canEdit = useCanEdit()
   const { targetMap } = useTargets()
-  const record = records.find((r) => r.id === id) as LabRecordWithSource | undefined
+  // records are ascending by recordDate, so the neighbours are the older / newer reports.
+  const index = records.findIndex((r) => r.id === id)
+  const record = (index >= 0 ? records[index] : undefined) as LabRecordWithSource | undefined
+  const older = index > 0 ? records[index - 1] : undefined
+  const newer = index >= 0 ? records[index + 1] : undefined
 
   const [editing, setEditing] = useState(false)
   const [date, setDate] = useState('')
@@ -67,18 +74,11 @@ export default function RecordDetailPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const grouped = useMemo(() => {
-    if (!record) return []
-    const known = new Set(PANELS.flatMap((p) => p.tests))
-    const groups = PANELS.map((p) => ({
-      id: p.id as string,
-      label: p.label,
-      values: p.tests.map((t) => record.values.find((v) => v.testName === t)).filter((v): v is LabValue => !!v),
-    }))
-    const other = record.values.filter((v) => !known.has(v.testName))
-    if (other.length) groups.push({ id: 'other', label: 'Other', values: other })
-    return groups.filter((g) => g.values.length)
-  }, [record])
+  // This report's tests against their earlier readings (later reports are ignored).
+  const comparison = useMemo(
+    () => (record ? buildComparison(records, { anchorRecordId: record.id, targets: targetMap }) : null),
+    [records, record, targetMap]
+  )
 
   if (recordsLoading) {
     return (
@@ -89,7 +89,7 @@ export default function RecordDetailPage() {
     )
   }
 
-  if (!record || !pid) {
+  if (!record || !pid || !comparison) {
     return (
       <>
         <Header title="Record" showBack />
@@ -139,7 +139,6 @@ export default function RecordDetailPage() {
   }
 
   const abnormal = record.values.filter((v) => valueStatus(v.testName, v.value, v, targetMap) !== 'good').length
-  const sourcePath = record.pdfPath || null
 
   return (
     <>
@@ -189,33 +188,24 @@ export default function RecordDetailPage() {
               {abnormal ? <span className="text-terra-dk"> · {abnormal} out of range</span> : null}
             </p>
 
-            {grouped.map((g) => (
-              <section key={g.id} className="mt-6">
-                <h3 className="label mb-1.5 text-ink-3">{g.label}</h3>
-                <table className="w-full border-t border-hair-2 text-sm">
-                  <thead className="sr-only">
-                    <tr><th>Test</th><th>Value</th><th>Range</th></tr>
-                  </thead>
-                  <tbody>
-                    {g.values.map((v) => {
-                      const status = valueStatus(v.testName, v.value, v, targetMap)
-                      return (
-                        <tr key={v.testName} className={cn('border-b border-hair-2', status !== 'good' && 'bg-terra-pale/40')}>
-                          <td className="py-2.5 pl-1 pr-2 text-ink">
-                            <span className={cn('mr-2 inline-block h-2 w-2 rounded-full align-middle', STATUS_STYLES[status].dot)} aria-hidden />
-                            {REFERENCE_RANGES[v.testName]?.label ?? v.testName}
-                          </td>
-                          <td className={cn('num whitespace-nowrap py-2.5 text-right text-[16px]', status === 'good' ? 'text-ink' : 'text-terra-dk')}>
-                            {formatValue(v.value, v.unit)} <span className="font-sans text-[11px] text-ink-3">{v.unit}</span>
-                          </td>
-                          <td className="whitespace-nowrap py-2.5 pl-3 text-right text-xs text-ink-3 tabular"><RangeCell v={v} targetMap={targetMap} /></td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </section>
-            ))}
+            {/* Nothing here for hand-entered or migrated records without a file. */}
+            <OpenReportButton pdfPath={record.pdfPath} className="mt-4" />
+            {record.sourceDocumentId && (
+              <Link href={`/documents/${record.sourceDocumentId}`} className="tlink mt-2 inline-block text-[13px]">
+                View in Documents
+              </Link>
+            )}
+
+            <ReportNav older={older} newer={newer} />
+
+            {/* Keyed so the panels' open/closed state resets when moving to another report. */}
+            <CompareTable
+              key={record.id}
+              className="mt-5"
+              comparison={comparison}
+              columns={3}
+              columnLabels={['This report', 'Previous', 'Before']}
+            />
 
             {record.notes && (
               <section className="mt-6">
@@ -223,20 +213,6 @@ export default function RecordDetailPage() {
                 <p className="whitespace-pre-wrap text-[15px] text-ink">{record.notes}</p>
               </section>
             )}
-
-            <section className="mt-6">
-              <h3 className="label mb-1.5 text-ink-3">Source document</h3>
-              {sourcePath ? (
-                <>
-                  <DocumentPreview storagePath={sourcePath} contentType={guessType(sourcePath)} title="Source report" />
-                  {record.sourceDocumentId && (
-                    <Link href={`/documents/${record.sourceDocumentId}`} className="tlink mt-2 text-[13px]">View in Documents</Link>
-                  )}
-                </>
-              ) : (
-                <p className="text-sm text-ink-3">Entered by hand; no file attached.</p>
-              )}
-            </section>
 
             {error && <p role="alert" className="mt-4 text-sm text-critical">{error}</p>}
             {canEdit && (

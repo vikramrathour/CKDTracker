@@ -1,76 +1,56 @@
 'use client'
 
+import { useMemo, type ReactNode } from 'react'
 import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { formatDelta } from '@/lib/calculations/deltas'
-import { formatRange } from '@/lib/calculations/targets'
-import { arrowFor, type PrepChange, type VisitPrepSummary } from '@/lib/visits/prep'
-import { formatDate, formatValue, cn } from '@/lib/utils'
+import { CompareTable } from '@/components/compare/compare-table'
+import { usePatient } from '@/components/providers/patient-provider'
+import { useTargets } from '@/lib/hooks/use-targets'
+import { buildComparison } from '@/lib/calculations/compare'
+import type { VisitPrepSummary } from '@/lib/visits/prep'
+import { formatDate, cn } from '@/lib/utils'
 
-export function rangeLabel(c: PrepChange): string {
-  if (c.rangeMin == null && c.rangeMax == null) return ''
-  return `${formatRange({ min: c.rangeMin, max: c.rangeMax })}${c.rangeSource === 'target' ? ' target' : ''}`
-}
-
-function ChangeRow({ c }: { c: PrepChange }) {
-  return (
-    <li className={cn('flex min-h-[52px] items-center gap-3 border-b border-hair-2 py-2', c.outOfRange && 'bg-terra-pale/50')}>
-      <span className={cn('ml-1 h-2 w-2 flex-shrink-0 rounded-full', c.outOfRange ? 'bg-terra' : 'bg-sage')} aria-hidden />
-      <div className="min-w-0 flex-1">
-        <p className={cn('truncate text-sm text-ink', c.critical && 'font-semibold')}>{c.label}</p>
-        <p className="truncate text-xs text-ink-3 tabular">
-          {c.baseline != null
-            ? `was ${formatValue(c.baseline, c.unit)} on ${formatDate(c.baselineDate!, 'd MMM')}`
-            : 'first result'}
-          {rangeLabel(c) && ` · range ${rangeLabel(c)}`}
-        </p>
-      </div>
-      <div className="text-right">
-        <p className={cn('num text-[17px] font-medium', c.outOfRange ? 'text-terra-dk' : 'text-ink')}>
-          {formatValue(c.latest, c.unit)} <span className="font-sans text-[11px] text-ink-3">{c.unit}</span>
-        </p>
-        <p className="text-xs tabular">
-          {c.delta && (
-            <span className={c.delta.isGood ? 'text-sage' : 'text-terra-dk'}>
-              {arrowFor(c.delta.direction)} {formatDelta(c.delta)}
-            </span>
-          )}
-          {c.trend && (
-            <span className={cn('ml-2', c.trendGood ? 'text-ink-3' : 'text-terra-dk')} title="Trend over the last 5 results">
-              trend {arrowFor(c.trend)}
-            </span>
-          )}
-        </p>
-      </div>
-    </li>
+/**
+ * Visit prep, in the order it's used at the desk: last visit's advice, the
+ * actions (doctor view, PDF), alerts, the latest results next to the previous
+ * two, then medications and questions. The comparison is built from the
+ * records up to the visit date, so an old visit's prep doesn't show later reports.
+ */
+export function PrepView({ summary, actions }: { summary: VisitPrepSummary; actions?: ReactNode }) {
+  const { records } = usePatient()
+  const { targetMap } = useTargets()
+  const visitDate = summary.visit.visitDate
+  const comparison = useMemo(
+    () => buildComparison(records.filter((r) => r.recordDate.slice(0, 10) <= visitDate), { targets: targetMap }),
+    [records, visitDate, targetMap]
   )
-}
 
-export function PrepView({ summary }: { summary: VisitPrepSummary }) {
-  const others = summary.changes.filter((c) => !c.outOfRange)
   return (
     <div className="space-y-7">
-      <p className="text-sm text-ink-2">
-        {summary.previousVisit ? (
-          <>
-            Since the{' '}
-            <Link href={`/visits/${summary.previousVisit.id}`} className="tlink">
-              visit on {formatDate(summary.previousVisit.visitDate, 'd MMM yyyy')}
-            </Link>
-            : {summary.newRecords.length} new report{summary.newRecords.length === 1 ? '' : 's'}.
-          </>
-        ) : (
-          <>No earlier visit recorded, so this shows the latest report.</>
-        )}
-      </p>
+      {(summary.previousVisit?.advice || actions) && (
+        <div className="space-y-4">
+          {summary.previousVisit?.advice && (
+            <section className="rounded-card border border-l-2 border-hair border-l-terra bg-vellum p-4">
+              <p className="eyebrow">
+                Advice last time · {formatDate(summary.previousVisit.visitDate, 'd MMM yyyy')}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{summary.previousVisit.advice}</p>
+            </section>
+          )}
+          {actions}
+        </div>
+      )}
 
       <section aria-labelledby="alerts-h">
-        <h2 id="alerts-h" className="label mb-2 text-ink-3">Alerts</h2>
+        <h2 id="alerts-h" className="font-serif text-xl font-medium text-ink">
+          Recent <em className="italic text-terra-dk">alerts</em>{' '}
+          <span className="font-sans text-sm text-ink-3 tabular">({summary.alerts.length})</span>
+        </h2>
         {summary.alerts.length === 0 ? (
-          <p className="text-sm text-ink-3">No alerts.</p>
+          <p className="mt-1 text-sm text-ink-3">No alerts.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="mt-2 space-y-2">
             {summary.alerts.map((a, i) => (
               <li
                 key={i}
@@ -87,33 +67,24 @@ export function PrepView({ summary }: { summary: VisitPrepSummary }) {
         )}
       </section>
 
-      <section aria-labelledby="oor-h">
-        <h2 id="oor-h" className="font-serif text-xl font-medium text-ink">
-          Out of <em className="italic text-terra-dk">range</em>{' '}
-          <span className="font-sans text-sm text-ink-3 tabular">({summary.outOfRange.length})</span>
+      <section aria-labelledby="results-h">
+        <h2 id="results-h" className="font-serif text-xl font-medium text-ink">
+          Latest <em className="italic text-terra-dk">results</em>
         </h2>
-        {summary.outOfRange.length === 0 ? (
-          <p className="mt-1 text-sm text-ink-3">Everything in this period is within range.</p>
-        ) : (
-          <ul className="mt-2 border-t border-hair-2">
-            {summary.outOfRange.map((c) => <ChangeRow key={c.testName} c={c} />)}
-          </ul>
-        )}
-      </section>
-
-      <section aria-labelledby="changes-h">
-        <h2 id="changes-h" className="font-serif text-xl font-medium text-ink">
-          Changes since <em className="italic text-terra-dk">last visit</em>
-        </h2>
-        {summary.changes.length === 0 ? (
-          <p className="mt-1 text-sm text-ink-3">No lab results in this period.</p>
-        ) : others.length === 0 ? (
-          <p className="mt-1 text-sm text-ink-3">All results in this period are listed above.</p>
-        ) : (
-          <ul className="mt-2 border-t border-hair-2">
-            {others.map((c) => <ChangeRow key={c.testName} c={c} />)}
-          </ul>
-        )}
+        <p className="mt-1 text-sm text-ink-2">
+          {summary.previousVisit ? (
+            <>
+              Since the{' '}
+              <Link href={`/visits/${summary.previousVisit.id}`} className="tlink">
+                visit on {formatDate(summary.previousVisit.visitDate, 'd MMM yyyy')}
+              </Link>
+              : {summary.newRecords.length} new report{summary.newRecords.length === 1 ? '' : 's'}.
+            </>
+          ) : (
+            <>No earlier visit recorded.</>
+          )}
+        </p>
+        <CompareTable comparison={comparison} columns={3} collapseNormal className="mt-2" />
         {summary.newRecords.length > 0 && (
           <p className="mt-3 text-xs text-ink-3">
             Reports:{' '}
@@ -166,13 +137,6 @@ export function PrepView({ summary }: { summary: VisitPrepSummary }) {
           </ol>
         )}
       </section>
-
-      {summary.previousVisit?.advice && (
-        <section className="rounded-card border border-l-2 border-hair border-l-terra bg-vellum p-4">
-          <p className="eyebrow">Advice last time</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{summary.previousVisit.advice}</p>
-        </section>
-      )}
     </div>
   )
 }

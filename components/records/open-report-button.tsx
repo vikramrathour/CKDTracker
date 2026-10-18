@@ -56,7 +56,7 @@ export function OpenReportButton({
         aria-label={label}
         title={failed ? 'The file could not be opened' : label}
         className={cn(
-          'inline-flex h-9 w-9 items-center justify-center rounded-btn text-ink-3 transition-colors hover:bg-wash hover:text-ink',
+          'inline-flex h-11 w-11 items-center justify-center rounded-btn text-ink-3 transition-colors hover:bg-wash hover:text-ink',
           failed && 'text-critical',
           className
         )}
