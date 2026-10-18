@@ -6,7 +6,10 @@
   publish = ".next"
 
 [build.environment]
-  NODE_VERSION = "22"
+  # Functions run on the build's Node version. firebase-admin 14 (jwks-rsa →
+  # jose 6) needs require() of ES modules, which failed on the Node 22 runtime
+  # with ERR_REQUIRE_ESM; Node 24 matches local development.
+  NODE_VERSION = "24"
 
 # netlify/functions/reminders.mjs replaces the Vercel cron in vercel.json.
 [functions]
