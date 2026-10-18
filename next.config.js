@@ -29,7 +29,14 @@ const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
 
   // Server-only packages that must not be bundled by webpack
-  serverExternalPackages: ['pdf-parse', 'firebase-admin'],
+  serverExternalPackages: ['pdf-parse', 'firebase-admin', '@react-pdf/renderer'],
+
+  // pdfkit (via @react-pdf) loads its fonts through `#standard-fonts/*` subpath
+  // imports, which file tracing misses; without them the deployed server
+  // function crashes (Netlify: "Cannot find module …/standard-fonts/Helvetica.cjs").
+  outputFileTracingIncludes: {
+    '/**': ['./node_modules/pdfkit/js/**/*'],
+  },
 
   // Proxy Firebase Auth's helper pages through our own origin. With
   // NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN set to the app's domain, signInWithRedirect
