@@ -50,3 +50,8 @@ serviceAccount*.json
 
 # Netlify CLI
 .netlify/
+
+# Service-account keys (full admin access): never commit
+*-sa.json
+*firebase-adminsdk*.json
+service-account*.json
