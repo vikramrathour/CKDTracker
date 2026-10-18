@@ -10,6 +10,7 @@ import { PendingInviteRedeemer } from '@/components/care-circle/pending-invite-r
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
+import { TestSheetProvider } from '@/components/trends/test-sheet'
 
 function FullScreenSpinner() {
   return (
@@ -49,14 +50,17 @@ function PatientGate({ children }: { children: React.ReactNode }) {
     <div className="relative mx-auto min-h-screen max-w-lg bg-canvas">
       <ScrollToTop />
       <OfflineIndicator />
-      {children}
-      {showNav && (
-        <>
-          <BottomNav />
-          {/* Spacer for bottom nav + home indicator */}
-          <div className="h-[calc(5.5rem+env(safe-area-inset-bottom))]" />
-        </>
-      )}
+      {/* Tap any test anywhere → chart sheet (components/trends/test-sheet.tsx) */}
+      <TestSheetProvider>
+        {children}
+        {showNav && (
+          <>
+            <BottomNav />
+            {/* Spacer for bottom nav + home indicator */}
+            <div className="h-[calc(5.5rem+env(safe-area-inset-bottom))]" />
+          </>
+        )}
+      </TestSheetProvider>
     </div>
   )
 }

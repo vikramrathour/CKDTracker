@@ -13,6 +13,12 @@ export function formatDate(dateStr: string, fmt: string = 'MMM yyyy'): string {
   return format(parseISO(dateStr), fmt)
 }
 
+/** Compact date for tables: "12 Sep", or "12 Sep 25" outside the current year. */
+export function formatShortDate(dateStr: string, now: Date = new Date()): string {
+  const d = parseISO(dateStr)
+  return format(d, d.getFullYear() === now.getFullYear() ? 'd MMM' : 'd MMM yy')
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** "2026-08-12" → "12 Aug 2026" (calendar date, no timezone shift); anything else unchanged. */
