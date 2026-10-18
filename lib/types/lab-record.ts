@@ -1,4 +1,5 @@
-export type Panel = 'hemogram' | 'kidney' | 'tacrolimus' | 'electrolytes' | 'lipid' | 'urine'
+/** 'other': a test outside REFERENCE_RANGES, kept under its printed name. */
+export type Panel = 'hemogram' | 'kidney' | 'tacrolimus' | 'electrolytes' | 'lipid' | 'urine' | 'other'
 
 export interface LabValue {
   testName: string

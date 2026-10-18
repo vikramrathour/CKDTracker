@@ -47,3 +47,6 @@ public/swe-worker-*.js.map
 *-firebase-adminsdk-*.json
 service-account*.json
 serviceAccount*.json
+
+# Netlify CLI
+.netlify/

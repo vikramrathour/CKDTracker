@@ -47,15 +47,19 @@ export function ExtractReview({
   source,
   onSaved,
   onCancel,
+  cancelLabel,
 }: {
   source: ExtractSource
   onSaved: (recordId: string) => void
   onCancel: () => void
+  /** Label for the Cancel/Back buttons (e.g. "Skip file" in the upload queue). */
+  cancelLabel?: string
 }) {
   const { pid, records } = usePatient()
   const [phase, setPhase] = useState<Phase>('extracting')
   const [error, setError] = useState('')
   const [note, setNote] = useState<string | null>(null)
+  const [retryable, setRetryable] = useState(false)
   const [date, setDate] = useState('')
   const [labName, setLabName] = useState('')
   const [values, setValues] = useState<LabValue[]>([])
@@ -88,7 +92,15 @@ export function ExtractReview({
       setValues(Array.isArray(data.values) ? data.values : [])
       setDate(data.date || today())
       setLabName(data.labName || '')
-      setNote(data.values?.length ? null : data.note || 'No lab values were found. You can add them by hand below.')
+      // A retryable result (AI busy, quota) always explains itself, even with some values.
+      setRetryable(data.retryable === true)
+      setNote(
+        data.retryable === true && data.note
+          ? data.note
+          : data.values?.length
+            ? null
+            : data.note || 'No lab values were found. You can add them by hand below.'
+      )
       setPhase('review')
     } catch (err) {
       setError(err instanceof Error && err.message === 'Not signed in' ? 'You are not signed in. Please sign in again.' : 'Could not reach the server. Try again.')
@@ -143,7 +155,7 @@ export function ExtractReview({
           <div className="text-sm text-critical">{error}</div>
         </div>
         <div className="mt-5 flex gap-3">
-          <Button variant="secondary" className="flex-1" onClick={onCancel}>Back</Button>
+          <Button variant="secondary" className="flex-1" onClick={onCancel}>{cancelLabel ?? 'Back'}</Button>
           <Button className="flex-1" onClick={extract}>Try again</Button>
         </div>
       </div>
@@ -180,14 +192,21 @@ export function ExtractReview({
         </h2>
         <span className="text-xs text-ink-3">Check each value against the report</span>
       </div>
-      {note && <p className="mb-3 text-sm text-ink-2">{note}</p>}
+      {note && (
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <p className="text-sm text-ink-2">{note}</p>
+          {retryable && (
+            <Button variant="secondary" className="flex-shrink-0" onClick={extract}>Try again</Button>
+          )}
+        </div>
+      )}
 
       <ValuesEditor values={values} onChange={setValues} />
 
       {error && <p role="alert" className="mt-3 text-sm text-critical">{error}</p>}
 
       <div className="mt-6 flex gap-3">
-        <Button variant="secondary" onClick={onCancel} className="flex-1">Cancel</Button>
+        <Button variant="secondary" onClick={onCancel} className="flex-1">{cancelLabel ?? 'Cancel'}</Button>
         <Button onClick={save} loading={phase === 'saving'} disabled={values.length === 0 || !date} className="flex-[2]">
           Save {values.length} value{values.length === 1 ? '' : 's'}
         </Button>

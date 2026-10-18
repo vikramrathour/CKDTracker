@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
         extractedCount: result.extractedCount,
         method: result.method,
         note: result.note ?? null,
+        retryable: !!result.partial,
       },
       { headers: { 'Cache-Control': 'private, no-store' } }
     )

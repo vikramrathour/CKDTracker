@@ -33,7 +33,7 @@ function bucketName(): string {
   return name
 }
 
-function respond(documentId: string, r: CachedExtraction, cached: boolean, note?: string | null) {
+function respond(documentId: string, r: CachedExtraction, cached: boolean, note?: string | null, retryable = false) {
   return NextResponse.json(
     {
       documentId,
@@ -44,6 +44,8 @@ function respond(documentId: string, r: CachedExtraction, cached: boolean, note?
       extractedCount: r.values.length,
       note: note ?? r.note ?? null,
       cached,
+      // The model was skipped or failed: trying again may read more.
+      retryable,
     },
     { headers: { 'Cache-Control': 'private, no-store' } }
   )
@@ -95,7 +97,7 @@ export async function POST(req: NextRequest) {
     // result, and prefer an earlier full one.
     if (result.partial) {
       if (cached) return respond(documentId, cached, true, result.note)
-      return respond(documentId, toCachedExtraction(result), false)
+      return respond(documentId, toCachedExtraction(result), false, undefined, true)
     }
 
     const entry = toCachedExtraction(result)

@@ -1,0 +1,13 @@
+# Netlify: the Next.js adapter (OpenNext) is applied automatically and turns
+# app/api/** route handlers into functions (60 s limit, same as maxDuration).
+# Environment variables live in the Netlify UI / `netlify env:set`, never here.
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# netlify/functions/reminders.mjs replaces the Vercel cron in vercel.json.
+[functions]
+  directory = "netlify/functions"

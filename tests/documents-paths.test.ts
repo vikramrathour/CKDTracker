@@ -61,20 +61,35 @@ describe('extraction cache', () => {
     expect(back?.values[0]).toMatchObject({ testName: 'Creatinine', value: 1.2, referenceMax: 1.3 })
   })
 
-  it('drops unknown tests, bad values and bad dates; null for junk', () => {
+  it('keeps other tests in the other panel; drops bad names, bad values and bad dates; null for junk', () => {
     const back = fromCachedExtraction({
+      version: 2,
       method: 'gemini',
       date: 'yesterday',
       labName: 42,
-      values: [{ testName: 'NotATest', value: 1 }, { testName: 'Creatinine', value: 'x' }, values[0], { ...values[0], value: 9 }],
+      values: [
+        { testName: 'SGPT (ALT)', value: 52, unit: 'U/L', referenceMax: 45 },
+        { testName: '__proto__', value: 1 },
+        { testName: '12.5', value: 1 },
+        { testName: 'Creatinine', value: 'x' },
+        values[0],
+        { ...values[0], value: 9 },
+      ],
     })
-    expect(back?.values).toHaveLength(1)
-    expect(back?.values[0].value).toBe(1.2)
+    expect(back?.values.map((v) => [v.testName, v.panel, v.value])).toEqual([
+      ['SGPT (ALT)', 'other', 52],
+      ['Creatinine', 'kidney', 1.2],
+    ])
+    expect(back?.values[0]).toMatchObject({ unit: 'U/L', referenceMax: 45, isAbnormal: true })
     expect(back?.date).toBeNull()
     expect(back?.labName).toBeNull()
     expect(fromCachedExtraction(null)).toBeNull()
-    expect(fromCachedExtraction({ values: 'nope', method: 'regex' })).toBeNull()
-    expect(fromCachedExtraction({ values: [], method: 'evil' })).toBeNull()
-    expect(fromCachedExtraction({ values: [], method: 'gemini' })?.method).toBe('none')
+    expect(fromCachedExtraction({ version: 2, values: 'nope', method: 'regex' })).toBeNull()
+    expect(fromCachedExtraction({ version: 2, values: [], method: 'evil' })).toBeNull()
+    expect(fromCachedExtraction({ version: 2, values: [], method: 'gemini' })?.method).toBe('none')
+  })
+
+  it('ignores entries from before other tests were kept (no version)', () => {
+    expect(fromCachedExtraction({ values: [values[0]], method: 'regex', date: null, labName: null, note: null })).toBeNull()
   })
 })

@@ -427,6 +427,8 @@ FCM web push through the app's single service worker (`app/sw.ts` → `/sw.js`).
 
 The app is a standard Next.js app. **Vercel** is the simplest host: import the repo, add the env vars, deploy. All API routes need the Node runtime. On Vercel Hobby, change the cron to daily (see [Notifications](#notifications)); Hobby is also non-commercial only.
 
+**Netlify** works too (`netlify.toml`): the Next.js adapter is applied automatically, route handlers run as functions with a 60 s limit (same as `maxDuration`), and `netlify/functions/reminders.mjs` is a scheduled function that calls `/api/cron/reminders` hourly in place of the Vercel cron. Set the same env vars in the Netlify UI. Buffered function requests are capped at 6 MB (about 4.5 MB for binary uploads), which only affects the legacy `/api/pdf/parse` fallback; normal uploads go straight to Firebase Storage.
+
 After deploying:
 
 1. Add the production domain to Firebase Auth → **Authorized domains**, and set `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` + the OAuth redirect URI as described under [Sign-in](#sign-in).

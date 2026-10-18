@@ -1,6 +1,6 @@
 import 'server-only'
 import { parseLabText } from '@/lib/parsing/metropolis'
-import { guessLabName, type ExtractionResult } from '@/lib/parsing/extraction'
+import { guessLabName, mergeLabValues, type ExtractionResult } from '@/lib/parsing/extraction'
 import { HttpError } from '@/lib/server/auth'
 import { extractLabWithGemini, geminiConfigured, GEMINI_INLINE_MAX_BYTES } from '@/lib/server/gemini'
 import { UsageLimitError } from '@/lib/server/usage'
@@ -8,9 +8,12 @@ import { UsageLimitError } from '@/lib/server/usage'
 /**
  * Shared lab-value extraction for /api/pdf/parse and /api/documents/extract.
  *
- *   PDF   → pdf-parse + regex (Metropolis patterns). With fewer than 3 values
- *           (other labs, scanned PDFs) → Gemini with the ORIGINAL PDF as
- *           inlineData (text prompt if the file is too large to inline).
+ *   PDF   → pdf-parse + regex (Metropolis patterns, the known tests only),
+ *           then Gemini with the ORIGINAL PDF as inlineData (text prompt if
+ *           the file is too large to inline) for every other result on the
+ *           report. Regex values win for the tests both found. Without the
+ *           model (not configured, quota, error) the regex result is returned
+ *           as partial, so it isn't cached.
  *   image → Gemini with the photo as inlineData (no offline path).
  *
  * The caller always shows the values for review before saving.
@@ -39,8 +42,6 @@ export interface ExtractOptions {
   /** Called right before each Gemini call; throw UsageLimitError to skip it. */
   beforeAi?: () => Promise<void>
 }
-
-const MIN_REGEX_VALUES = 3
 
 export function sniffContentType(buf: Buffer): string | null {
   if (buf.subarray(0, 5).toString('latin1') === '%PDF-') return 'application/pdf'
@@ -91,10 +92,9 @@ export async function extractLabValues(
     const text = await pdfText(buf)
     const regex = text.trim().length >= 50 ? parseLabText(text) : { values: [], date: null }
     const regexResult: ExtractionResult = { ...regex, labName: guessLabName(text) }
-    if (regex.values.length >= MIN_REGEX_VALUES) return done(regexResult, 'regex')
 
     if (!geminiConfigured()) {
-      return done(regexResult, 'regex', 'AI extraction is not configured; only the offline parser ran', true)
+      return done(regexResult, 'regex', 'AI extraction is not configured, so only the common tests were read', true)
     }
     const aiInput =
       buf.length <= GEMINI_INLINE_MAX_BYTES
@@ -107,21 +107,27 @@ export async function extractLabValues(
         await opts.beforeAi?.()
       } catch (err) {
         if (err instanceof UsageLimitError) {
-          return done(regexResult, 'regex', err.message, true)
+          return done(regexResult, 'regex', `${err.message} Only the common tests were read.`, true)
         }
         throw err
       }
       try {
         const ai = await extractLabWithGemini(aiInput)
-        if (ai.values.length > regex.values.length) {
-          return done(
-            { values: ai.values, date: regex.date || ai.date, labName: regexResult.labName || ai.labName },
-            'gemini'
-          )
+        // The parser is exact for the tests it knows; the model adds the rest.
+        const values = mergeLabValues(regex.values, ai.values)
+        if (values.length > regex.values.length) {
+          return done({ values, date: regex.date || ai.date, labName: regexResult.labName || ai.labName }, 'gemini')
         }
       } catch (err) {
         console.error('Gemini extraction failed:', err instanceof Error ? err.message.slice(0, 200) : 'unknown error')
-        return done(regexResult, 'regex', regex.values.length ? undefined : 'No lab values found in this PDF', true)
+        return done(
+          regexResult,
+          'regex',
+          regex.values.length
+            ? 'The AI reader is busy, so only the common tests were read. Try again to read the rest.'
+            : 'The AI reader is busy, so this report could not be read. Try again in a minute.',
+          true
+        )
       }
     }
     return done(regexResult, 'regex', regex.values.length ? undefined : 'No lab values found in this PDF')

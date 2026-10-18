@@ -3,7 +3,9 @@ import {
   EXTRACTABLE_TESTS,
   EXTRACTION_SCHEMA,
   coerceNumber,
+  MAX_RECORD_VALUES,
   guessLabName,
+  mergeLabValues,
   parseExtractionText,
   validateExtraction,
 } from '@/lib/parsing/extraction'
@@ -12,9 +14,10 @@ import { REFERENCE_RANGES } from '@/lib/constants/reference-ranges'
 // Synthetic model responses only.
 
 describe('EXTRACTION_SCHEMA', () => {
-  it('restricts testName to REFERENCE_RANGES keys', () => {
-    const enumNames = EXTRACTION_SCHEMA.properties.values.items.properties.testName.enum
-    expect([...enumNames].sort()).toEqual(Object.keys(REFERENCE_RANGES).sort())
+  it('restricts knownTest to REFERENCE_RANGES keys and leaves testName free', () => {
+    const props = EXTRACTION_SCHEMA.properties.values.items.properties
+    expect([...props.knownTest.enum].sort()).toEqual(Object.keys(REFERENCE_RANGES).sort())
+    expect('enum' in props.testName).toBe(false)
     expect(EXTRACTABLE_TESTS).toContain('Tacrolimus')
   })
 })
@@ -54,28 +57,82 @@ describe('validateExtraction', () => {
     expect(r.values[1]).toMatchObject({ testName: 'Hemoglobin', unit: 'g/dL', isAbnormal: false })
   })
 
-  it('drops unknown names, near-misses, duplicates and non-numeric values', () => {
+  it('maps knownTest (or an exact / case-only match) to the canonical test', () => {
     const r = validateExtraction({
       values: [
-        { testName: 'Serum Creatinine', value: 1.1 },
-        { testName: 'creatinine', value: 1.1 },
+        { testName: 'Haemoglobin (Hb)', knownTest: 'Hemoglobin', value: 13.2, unit: 'g/dL' },
+        { testName: 'creatinine', knownTest: null, value: 1.1, unit: 'mg/dL' },
+        { testName: 'Potassium', value: 4.1, unit: 'mEq/L' },
+      ],
+    })
+    expect(r.values.map((v) => [v.testName, v.panel])).toEqual([
+      ['Hemoglobin', 'hemogram'],
+      ['Creatinine', 'kidney'],
+      ['Potassium', 'electrolytes'],
+    ])
+  })
+
+  it('keeps every other numeric test in the other panel, flagged against its printed range', () => {
+    const r = validateExtraction({
+      values: [
+        { testName: '  SGPT   (ALT) ', knownTest: null, value: '52', unit: 'U/L', referenceMin: null, referenceMax: 45 },
+        { testName: 'HbA1c', knownTest: null, value: 5.4, unit: '%', referenceMin: 4, referenceMax: 5.6 },
+        { testName: 'Urine Creatinine', knownTest: null, value: 88, unit: 'mg/dL', referenceMin: null, referenceMax: null },
+        { testName: 'Magnesium', knownTest: 'NotATest', value: 2.0, unit: 'mg/dL', referenceMin: 2.6, referenceMax: 1.6 },
+      ],
+    })
+    expect(r.values.map((v) => [v.testName, v.panel, v.isAbnormal])).toEqual([
+      ['SGPT (ALT)', 'other', true],
+      ['HbA1c', 'other', false],
+      ['Urine Creatinine', 'other', false],
+      ['Magnesium', 'other', false],
+    ])
+    expect(r.values[0]).toMatchObject({ value: 52, unit: 'U/L', referenceMax: 45 })
+    expect(r.values[0]).not.toHaveProperty('referenceMin')
+    expect(r.values[3]).toMatchObject({ referenceMin: 1.6, referenceMax: 2.6 })
+  })
+
+  it('drops prototype names, names without letters, duplicates and non-numeric values', () => {
+    const r = validateExtraction({
+      values: [
         { testName: 'toString', value: 1 },
         { testName: '__proto__', value: 1 },
+        { testName: '12.5', value: 1 },
         { testName: 'eGFR', value: 'high' },
+        { testName: 'ESR', value: 'Nil' },
         { testName: 'Potassium', value: 4.1, unit: 'mEq/L' },
-        { testName: 'Potassium', value: 9.9, unit: 'mEq/L' },
+        { testName: 'potassium', value: 9.9, unit: 'mEq/L' },
+        { testName: 'ESR', value: 12, unit: 'mm/hr' },
+        { testName: 'esr', value: 30, unit: 'mm/hr' },
         null,
         'Sodium 140',
       ],
     })
-    expect(r.values.map((v) => [v.testName, v.value])).toEqual([['Potassium', 4.1]])
+    expect(r.values.map((v) => [v.testName, v.value])).toEqual([['Potassium', 4.1], ['ESR', 12]])
   })
 
+  it('caps a record at 200 values', () => {
+    const many = Array.from({ length: 250 }, (_, i) => ({ testName: `Test ${i}`, value: i, unit: '' }))
+    expect(validateExtraction({ values: many }).values).toHaveLength(MAX_RECORD_VALUES)
+  })
   it('tolerates missing or malformed top-level fields', () => {
     expect(validateExtraction(null)).toEqual({ values: [], date: null, labName: null })
     expect(validateExtraction({ values: 'nope', date: 42, labName: '' })).toEqual({ values: [], date: null, labName: null })
     expect(validateExtraction({ values: [], date: '31/02/2026' }).date).toBeNull()
     expect(validateExtraction({ values: [], date: '05/03/2026' }).date).toBe('2026-03-05')
+  })
+})
+
+describe('mergeLabValues', () => {
+  it('keeps the primary values and adds only tests it lacks', () => {
+    const a = validateExtraction({ values: [{ testName: 'Creatinine', value: 1.1 }] }).values
+    const b = validateExtraction({
+      values: [
+        { testName: 'Creatinine', value: 9.9 },
+        { testName: 'SGOT (AST)', value: 30, unit: 'U/L' },
+      ],
+    }).values
+    expect(mergeLabValues(a, b).map((v) => [v.testName, v.value])).toEqual([['Creatinine', 1.1], ['SGOT (AST)', 30]])
   })
 })
 

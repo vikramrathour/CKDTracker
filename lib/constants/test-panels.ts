@@ -80,7 +80,7 @@ export const PANELS: PanelDefinition[] = [
 
 export const PANEL_MAP = Object.fromEntries(
   PANELS.map((p) => [p.id, p])
-) as Record<Panel, PanelDefinition>
+) as Partial<Record<Panel, PanelDefinition>>
 
 /** Flat list of all test names in display order */
 export const ALL_TESTS = PANELS.flatMap((p) => p.tests)

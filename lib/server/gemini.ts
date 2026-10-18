@@ -52,14 +52,37 @@ export async function extractLabWithGemini(
           },
         ]
 
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: EXTRACTION_SCHEMA as unknown as Schema,
-      temperature: 0,
-    },
-  })
+  const response = await withRetry(() =>
+    ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: EXTRACTION_SCHEMA as unknown as Schema,
+        temperature: 0,
+      },
+    })
+  )
   return parseExtractionText(response.text)
+}
+
+/** Overloaded / rate-limited / server-side errors that usually pass within seconds. */
+export function isTransientGeminiError(err: unknown): boolean {
+  const status = (err as { status?: unknown } | null)?.status
+  if (typeof status === 'number') return status === 429 || status >= 500
+  return err instanceof Error && /\b(429|500|502|503|504)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand/i.test(err.message)
+}
+
+const RETRY_DELAYS_MS = [1500, 4000]
+
+/** Run a Gemini call, retrying transient errors twice with backoff (stays well inside a 60 s route). */
+async function withRetry<T>(call: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await call()
+    } catch (err) {
+      if (attempt >= RETRY_DELAYS_MS.length || !isTransientGeminiError(err)) throw err
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]))
+    }
+  }
 }
