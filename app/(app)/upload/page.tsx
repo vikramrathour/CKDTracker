@@ -41,7 +41,10 @@ interface QueueItem {
   recordId?: string
 }
 
-const LEGACY_PDF_MAX = 10 * 1024 * 1024
+// The fallback posts the whole file through a server function; Netlify caps
+// buffered requests at 6 MB (≈ 4.5 MB of binary after base64), and larger
+// bodies come back as a gateway 504 instead of a readable error.
+const LEGACY_PDF_MAX = 4 * 1024 * 1024
 const MAX_FILES = 10
 
 function rejectionReason(r: FileRejection): string {
