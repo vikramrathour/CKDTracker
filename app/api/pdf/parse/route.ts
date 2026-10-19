@@ -21,6 +21,9 @@ const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
 const MAX_REQUEST_BYTES = MAX_BYTES + 64 * 1024
 
 export async function POST(req: NextRequest) {
+  // Netlify ends functions at 30 s (not maxDuration): leave the model until
+  // 25 s after the request arrived, then fall back to the parser's values.
+  const deadline = Date.now() + 25_000
   try {
     const user = await requireUser(req)
 
@@ -42,6 +45,7 @@ export async function POST(req: NextRequest) {
     if (!isPdfType || !hasPdfMagic) throw new HttpError(415, 'Only PDF files are supported')
 
     const result = await extractLabValues(buffer, 'application/pdf', {
+      deadline,
       beforeAi: async () => {
         await reserveExtraction(getAdminDb(), user.uid)
       },

@@ -52,6 +52,9 @@ function respond(documentId: string, r: CachedExtraction, cached: boolean, note?
 }
 
 export async function POST(req: NextRequest) {
+  // Netlify ends functions at 30 s (not maxDuration): leave the model until
+  // 25 s after the request arrived, then fall back to the parser's values.
+  const deadline = Date.now() + 25_000
   try {
     const body = (await req.json().catch(() => null)) as { pid?: unknown; documentId?: unknown; force?: unknown } | null
     const pid = typeof body?.pid === 'string' ? body.pid : ''
@@ -83,6 +86,7 @@ export async function POST(req: NextRequest) {
     let result
     try {
       result = await extractLabValues(buf, (fileMeta.contentType as string | undefined) ?? meta.contentType, {
+        deadline,
         beforeAi: async () => {
           await reserveExtraction(db, user.uid)
         },

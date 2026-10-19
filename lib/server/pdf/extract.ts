@@ -41,6 +41,8 @@ export interface FileExtraction extends ExtractionResult {
 export interface ExtractOptions {
   /** Called right before each Gemini call; throw UsageLimitError to skip it. */
   beforeAi?: () => Promise<void>
+  /** Epoch ms by which the model must have answered (the route's time budget). */
+  deadline?: number
 }
 
 export function sniffContentType(buf: Buffer): string | null {
@@ -112,7 +114,7 @@ export async function extractLabValues(
         throw err
       }
       try {
-        const ai = await extractLabWithGemini(aiInput)
+        const ai = await extractLabWithGemini(aiInput, { deadline: opts.deadline })
         // The parser is exact for the tests it knows; the model adds the rest.
         const values = mergeLabValues(regex.values, ai.values)
         if (values.length > regex.values.length) {
@@ -143,7 +145,7 @@ export async function extractLabValues(
     throw err
   }
   try {
-    const ai = await extractLabWithGemini({ data: buf, mimeType: type })
+    const ai = await extractLabWithGemini({ data: buf, mimeType: type }, { deadline: opts.deadline })
     return done(ai, 'gemini', ai.values.length ? undefined : 'No lab values found in this photo')
   } catch (err) {
     console.error('Gemini extraction failed:', err instanceof Error ? err.message.slice(0, 200) : 'unknown error')
