@@ -136,6 +136,9 @@ async function runChatLoop(opts: RunChatOptions, state: { usage: ChatUsage }): P
         toolConfig: lastRound ? { functionCallingConfig: { mode: FunctionCallingConfigMode.NONE } } : undefined,
         temperature: 0.3,
         maxOutputTokens: opts.maxOutputTokens ?? 4096,
+        // A small thinking budget per round: unbounded thinking made multi-round
+        // answers run past Netlify's 30 s function limit.
+        thinkingConfig: { thinkingBudget: 512 },
       },
     })
 
